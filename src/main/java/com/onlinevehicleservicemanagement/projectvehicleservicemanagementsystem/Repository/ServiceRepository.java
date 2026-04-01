@@ -1,0 +1,5 @@
+package com.onlinevehicleservicemanagement.projectvehicleservicemanagementsystem.Repository;
+import com.onlinevehicleservicemanagement.projectvehicleservicemanagementsystem.Model.ServiceEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ServiceRepository extends JpaRepository<ServiceEntity, Long> {}
