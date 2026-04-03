@@ -20,7 +20,7 @@ const validatePhone = phone => {
 };
 
 const validateNIC = nic => {
-  if (!nic) return '';
+  if (!nic) return 'Nic is required';
   const oldNIC = /^[0-9]{9}[VvXx]$/.test(nic);
   const newNIC = /^[0-9]{12}$/.test(nic);
   if (!oldNIC && !newNIC) return 'NIC must be 9 digits + V/X (old) or 12 digits (new)';

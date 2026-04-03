@@ -165,7 +165,7 @@ export default function Landing({ onLogin, onRegister }) {
             <div style={{ borderRadius:'var(--radius-lg)', overflow:'hidden',
               border:'1px solid var(--border2)', boxShadow:'var(--shadow-lg)' }}>
               <img
-                src="https://images.unsplash.com/photo-1625047509168-a7026f36de04?w=800&q=80&auto=format&fit=crop"
+                src="https://img.freepik.com/premium-photo/man-working-vehicle-mechanical-engineer_1288657-1550.jpg"
                 alt="Garage service"
                 style={{ width:'100%', height:320, objectFit:'cover', display:'block' }}
               />
@@ -182,9 +182,12 @@ export default function Landing({ onLogin, onRegister }) {
           <p className="land-section-sub">State-of-the-art facilities for your vehicle</p>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14 }}>
             {[
-              'https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=600&q=75&auto=format&fit=crop',
+              'https://i.ytimg.com/vi/_lzEx5AkJUY/maxresdefault.jpg',
               'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=600&q=75&auto=format&fit=crop',
-              'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&q=75&auto=format&fit=crop',
+              'https://static.vecteezy.com/system/resources/previews/033/280/162/non_2x/car-mechanic-working-in-auto-repair-shop-handsome-young-man-in-uniform-working-with-car-engine-generative-ai-photo.jpeg',
+              'https://img.freepik.com/premium-photo/automobile-repair-shop-auto-vehicle-service-center-car-service-maintenance-diagnostics-center_71956-55921.jpg',
+              'https://www.idolz.com/wp-content/uploads/2021/04/vehicle-spare-parts-1-1.jpg',
+              'https://images.unsplash.com/photo-1502877338535-766e1452684a?w=600&q=75&auto=format&fit=crop',
             ].map((src, i) => (
               <div key={i} style={{ borderRadius:'var(--radius)', overflow:'hidden',
                 border:'1px solid var(--border)', transition:'transform .3s',
