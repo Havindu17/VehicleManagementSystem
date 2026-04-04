@@ -3,7 +3,7 @@ import ExportBtn from '../components/Exportbtn';
 import { feedbackService, customerService, garageService, servicesCatalogService } from '../utils/api';
 import "../style.css";
 
-// ── Mock data fallback (backend fail වෙනාකොට use කරනවා) ──
+// ── Mock data fallback 
 const MOCK_CUSTOMERS = [
   { id:1, fullName:'Nimal Perera',    phone:'0771234567' },
   { id:2, fullName:'Kamal Silva',     phone:'0772345678' },
@@ -78,18 +78,18 @@ export default function Feedback() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      // Feedback load කරන්න try කරනවා
+      // Feedback 
       const f = await feedbackService.getAll();
       setData(f);
     } catch (err) { console.error('Feedback load error:', err); }
 
-    // Customers — backend fail වෙනාකොට mock data use කරනවා
+    // Customers 
     try {
       const c = await customerService.getAll();
       if (c && c.length > 0) setCustomers(c);
     } catch { /* mock data already set */ }
 
-    // Garages — backend fail වෙනාකොට mock data use කරනවා
+    // Garages 
     try {
       const g = await garageService.getAll();
       if (g && g.length > 0) setGarages(g);
@@ -100,7 +100,7 @@ export default function Feedback() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Garage select වෙනාකොට services load කරන්න
+  // Garage 
   const handleGarageChange = async e => {
     const garageId = e.target.value;
     const found = garages.find(g => String(g.id) === String(garageId));
@@ -109,7 +109,7 @@ export default function Feedback() {
     setErrors(err => ({ ...err, garage:'' }));
 
     if (garageId) {
-      // Mock services use කරනවා (backend services array from mock)
+      // Mock services 
       const mockServices = found?.services || [];
       if (mockServices.length > 0) {
         setGarageServices(mockServices.map((s, i) => ({ id: i, name: s })));
