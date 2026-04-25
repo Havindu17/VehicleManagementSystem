@@ -20,7 +20,7 @@ const validatePhone = phone => {
 };
 
 const validateNIC = nic => {
-  if (!nic) return 'Nic is required';
+  if (!nic) return 'NIC is required';
   const oldNIC = /^[0-9]{9}[VvXx]$/.test(nic);
   const newNIC = /^[0-9]{12}$/.test(nic);
   if (!oldNIC && !newNIC) return 'NIC must be 9 digits + V/X (old) or 12 digits (new)';
@@ -32,6 +32,26 @@ const validateEmail = email => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Invalid email address';
   return '';
 };
+
+// ── Field component defined OUTSIDE to prevent re-mount on every keystroke ──
+const Field = ({ label, name, type = 'text', placeholder, required, value, onChange, error }) => (
+  <div className="field">
+    <label>{label}{required && ' *'}</label>
+    <input
+      name={name}
+      type={type}
+      value={value || ''}
+      onChange={onChange}
+      placeholder={placeholder}
+      style={{ borderColor: error ? 'var(--red)' : '' }}
+    />
+    {error && (
+      <span style={{ color: 'var(--red)', fontSize: '.75rem', marginTop: 2, display: 'block' }}>
+        ⚠ {error}
+      </span>
+    )}
+  </div>
+);
 
 export default function CustomerManagement() {
   const [tab,        setTab]        = useState('customers');
@@ -50,13 +70,16 @@ export default function CustomerManagement() {
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 2500); };
 
+  // ── Live change handler with inline validation ──
   const h = e => {
     const { name, value } = e.target;
     setForm(f => ({ ...f, [name]: value }));
+
     let err = '';
-    if (name === 'phone') err = validatePhone(value);
-    if (name === 'nic')   err = validateNIC(value);
-    if (name === 'email') err = validateEmail(value);
+    if (name === 'phone')    err = validatePhone(value);
+    if (name === 'nic')      err = validateNIC(value);
+    if (name === 'email')    err = validateEmail(value);
+    if (name === 'fullName' && !value.trim()) err = 'Full name is required';
     setFormErrors(fe => ({ ...fe, [name]: err }));
   };
 
@@ -103,17 +126,15 @@ export default function CustomerManagement() {
 
   const validateAll = () => {
     const e = {};
-    if (!form.fullName) e.fullName = 'Full name is required';
+    if (!form.fullName || !form.fullName.trim()) e.fullName = 'Full name is required';
     const emailErr = validateEmail(form.email);
     if (emailErr) e.email = emailErr;
     if (form.phone) {
       const phoneErr = validatePhone(form.phone);
       if (phoneErr) e.phone = phoneErr;
     }
-    if (form.nic) {
-      const nicErr = validateNIC(form.nic);
-      if (nicErr) e.nic = nicErr;
-    }
+    const nicErr = validateNIC(form.nic);
+    if (nicErr) e.nic = nicErr;
     setFormErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -151,22 +172,6 @@ export default function CustomerManagement() {
     NIC: c.nic, Role: c.role, Address: c.address, Status: c.status,
   }));
 
-  const Field = ({ label, name, type = 'text', placeholder, required }) => (
-    <div className="field">
-      <label>{label}{required && ' *'}</label>
-      <input
-        name={name} type={type} value={form[name] || ''} onChange={h}
-        placeholder={placeholder}
-        style={{ borderColor: formErrors[name] ? 'var(--red)' : '' }}
-      />
-      {formErrors[name] && (
-        <span style={{ color: 'var(--red)', fontSize: '.75rem', marginTop: 2, display: 'block' }}>
-          ⚠ {formErrors[name]}
-        </span>
-      )}
-    </div>
-  );
-
   return (
     <div>
       <div className="page-header">
@@ -189,12 +194,13 @@ export default function CustomerManagement() {
         </div>
       )}
 
+      {/* ── Stats ── */}
       <div className="stats-row stats-4">
         {[
-          { icon: '👥', label: 'Total Users',    val: customers.length,                                     color: 'sc-blue'   },
+          { icon: '👥', label: 'Total Users',    val: customers.length,                                        color: 'sc-blue'   },
           { icon: '🚗', label: 'Vehicle Owners', val: customers.filter(c => c.role === 'Vehicle Owner').length, color: 'sc-cyan'   },
           { icon: '🏪', label: 'Garage Owners',  val: customers.filter(c => c.role === 'Garage Owner').length,  color: 'sc-purple' },
-          { icon: '⭐', label: 'Avg. Rating',     val: avgRating,                                            color: 'sc-gold'   },
+          { icon: '⭐', label: 'Avg. Rating',     val: avgRating,                                               color: 'sc-gold'   },
         ].map(s => (
           <div key={s.label} className={`stat-card ${s.color}`}>
             <span className="stat-icon">{s.icon}</span>
@@ -204,7 +210,7 @@ export default function CustomerManagement() {
         ))}
       </div>
 
-      {/* Tabs */}
+      {/* ── Tabs ── */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--surface2)', borderRadius: 'var(--r)', padding: 4, width: 'fit-content' }}>
         {['customers', 'feedback'].map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
@@ -249,7 +255,7 @@ export default function CustomerManagement() {
             <div className="tscroll">
               <table>
                 <thead>
-                  <tr>{['ID', 'Name', 'Email', 'Phone', 'NIC', 'Role', 'Vehicles', 'Bookings', 'Joined', 'Status', 'Actions'].map(h => <th key={h}>{h}</th>)}</tr>
+                  <tr>{['ID', 'Name', 'Email', 'Phone', 'NIC', 'Role', 'Vehicles', 'Bookings', 'Joined', 'Status', 'Actions'].map(col => <th key={col}>{col}</th>)}</tr>
                 </thead>
                 <tbody>
                   {filteredC.map(c => (
@@ -302,7 +308,7 @@ export default function CustomerManagement() {
           <div className="tcard-bar"><div className="tcard-title">⭐ Customer Feedback & Ratings</div></div>
           <div className="tscroll">
             <table>
-              <thead><tr>{['ID', 'Customer', 'Garage', 'Rating', 'Comment', 'Date', 'Status'].map(h => <th key={h}>{h}</th>)}</tr></thead>
+              <thead><tr>{['ID', 'Customer', 'Garage', 'Rating', 'Comment', 'Date', 'Status'].map(col => <th key={col}>{col}</th>)}</tr></thead>
               <tbody>
                 {feedback.map(f => (
                   <tr key={f.id}>
@@ -322,7 +328,7 @@ export default function CustomerManagement() {
         </div>
       )}
 
-      {/* ── Add/Edit Modal ── */}
+      {/* ── Add / Edit Modal ── */}
       {modal && (
         <div className="overlay" onClick={e => e.target === e.currentTarget && setModal(false)}>
           <div className="modal">
@@ -331,43 +337,60 @@ export default function CustomerManagement() {
               <button className="modal-close" onClick={() => setModal(false)}>×</button>
             </div>
 
+            {/* Full Name + Email */}
             <div className="form-row">
-              <Field label="Full Name" name="fullName" placeholder="Full name" required />
-              <Field label="Email"     name="email"    type="email" placeholder="email@example.com" required />
+              <Field
+                label="Full Name" name="fullName" placeholder="Full name" required
+                value={form.fullName} onChange={h} error={formErrors.fullName}
+              />
+              <Field
+                label="Email" name="email" type="email" placeholder="email@example.com" required
+                value={form.email} onChange={h} error={formErrors.email}
+              />
             </div>
 
+            {/* Phone + NIC */}
             <div className="form-row">
               <div className="field">
                 <label>Phone</label>
                 <input
-                  name="phone" value={form.phone || ''} onChange={h}
-                  placeholder="0771234567" maxLength={10}
+                  name="phone"
+                  value={form.phone || ''}
+                  onChange={h}
+                  placeholder="0771234567"
+                  maxLength={10}
                   style={{ borderColor: formErrors.phone ? 'var(--red)' : '' }}
                 />
-                {formErrors.phone
-                  ? <span style={{ color: 'var(--red)', fontSize: '.75rem', marginTop: 2, display: 'block' }}>⚠ {formErrors.phone}</span>
-                  : form.phone && !formErrors.phone && form.phone.replace(/[-\s]/g, '').length === 10
-                    ? <span style={{ color: 'var(--green)', fontSize: '.75rem', marginTop: 2, display: 'block' }}>✓ Valid phone number</span>
-                    : <span style={{ fontSize: '.73rem', color: 'var(--text3)', marginTop: 2, display: 'block' }}>Format: 07XXXXXXXX (10 digits)</span>
-                }
+                {formErrors.phone ? (
+                  <span style={{ color: 'var(--red)', fontSize: '.75rem', marginTop: 2, display: 'block' }}>⚠ {formErrors.phone}</span>
+                ) : form.phone && form.phone.replace(/[-\s]/g, '').length === 10 ? (
+                  <span style={{ color: 'var(--green)', fontSize: '.75rem', marginTop: 2, display: 'block' }}>✓ Valid phone number</span>
+                ) : (
+                  <span style={{ fontSize: '.73rem', color: 'var(--text3)', marginTop: 2, display: 'block' }}>Format: 07XXXXXXXX (10 digits)</span>
+                )}
               </div>
 
               <div className="field">
-                <label>NIC</label>
+                <label>NIC <span style={{ color: 'var(--red)' }}>*</span></label>
                 <input
-                  name="nic" value={form.nic || ''} onChange={h}
-                  placeholder="123456789V or 123456789012" maxLength={12}
-                  style={{ borderColor: formErrors.nic ? 'var(--red)' : '' }}
+                  name="nic"
+                  value={form.nic || ''}
+                  onChange={h}
+                  placeholder="123456789V or 123456789012"
+                  maxLength={12}
+                  style={{ borderColor: formErrors.nic ? 'var(--red)' : form.nic && !formErrors.nic ? 'var(--green)' : '' }}
                 />
-                {formErrors.nic
-                  ? <span style={{ color: 'var(--red)', fontSize: '.75rem', marginTop: 2, display: 'block' }}>⚠ {formErrors.nic}</span>
-                  : form.nic && !formErrors.nic
-                    ? <span style={{ color: 'var(--green)', fontSize: '.75rem', marginTop: 2, display: 'block' }}>✓ Valid NIC number</span>
-                    : <span style={{ fontSize: '.73rem', color: 'var(--text3)', marginTop: 2, display: 'block' }}>Old: 9 digits + V/X · New: 12 digits</span>
-                }
+                {formErrors.nic ? (
+                  <span style={{ color: 'var(--red)', fontSize: '.75rem', marginTop: 2, display: 'block' }}>⚠ {formErrors.nic}</span>
+                ) : form.nic && !formErrors.nic ? (
+                  <span style={{ color: 'var(--green)', fontSize: '.75rem', marginTop: 2, display: 'block' }}>✓ Valid NIC number</span>
+                ) : (
+                  <span style={{ fontSize: '.73rem', color: 'var(--text3)', marginTop: 2, display: 'block' }}>Old: 9 digits + V/X · New: 12 digits</span>
+                )}
               </div>
             </div>
 
+            {/* Role + Status */}
             <div className="form-row">
               <div className="field">
                 <label>Role</label>
@@ -386,16 +409,25 @@ export default function CustomerManagement() {
               </div>
             </div>
 
+            {/* Address + Driving License */}
             <div className="form-row">
-              <Field label="Address"         name="address"        placeholder="City / District" />
-              <Field label="Driving License" name="drivingLicense" placeholder="DL-XXXXX" />
+              <Field
+                label="Address" name="address" placeholder="City / District"
+                value={form.address} onChange={h} error={formErrors.address}
+              />
+              <Field
+                label="Driving License" name="drivingLicense" placeholder="DL-XXXXX"
+                value={form.drivingLicense} onChange={h} error={formErrors.drivingLicense}
+              />
             </div>
 
+            {/* Join Date */}
             <div className="field">
               <label>Join Date</label>
               <input name="joinDate" type="date" value={form.joinDate || ''} onChange={h} />
             </div>
 
+            {/* Error summary */}
             {Object.values(formErrors).some(e => e) && (
               <div className="alert-box alert-error" style={{ marginTop: 8 }}>
                 ⚠ Please fix {Object.values(formErrors).filter(e => e).length} error(s) before saving.
@@ -404,7 +436,7 @@ export default function CustomerManagement() {
 
             <div className="modal-foot">
               <button className="btn btn-outline" onClick={() => setModal(false)}>Cancel</button>
-              <button className="btn btn-accent" onClick={save}>{editId ? 'Update' : 'Save'}</button>
+              <button className="btn btn-accent"  onClick={save}>{editId ? 'Update' : 'Save'}</button>
             </div>
           </div>
         </div>
@@ -446,7 +478,7 @@ export default function CustomerManagement() {
             </div>
             <div className="modal-foot">
               <button className="btn btn-outline" onClick={() => setViewModal(null)}>Close</button>
-              <button className="btn btn-accent" onClick={() => { openEdit(viewModal); setViewModal(null); }}>✏️ Edit</button>
+              <button className="btn btn-accent"  onClick={() => { openEdit(viewModal); setViewModal(null); }}>✏️ Edit</button>
             </div>
           </div>
         </div>

@@ -65,8 +65,8 @@ function validate(form, existingPlates = [], editId = null) {
   // 5. Year
   if (form.year !== '') {
     const yr = Number(form.year);
-    if (!Number.isInteger(yr) || yr < 1970 || yr > CURRENT_YEAR + 1) {
-      errors.year = `Year must be between 1970 and ${CURRENT_YEAR + 1}.`;
+    if (!Number.isInteger(yr) || yr < 1900 || yr > CURRENT_YEAR + 1) {
+      errors.year = `Year must be between 1900 and ${CURRENT_YEAR + 1}.`;
     }
   }
 
