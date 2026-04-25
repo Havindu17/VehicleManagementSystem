@@ -11,6 +11,7 @@ import VehicleManagement  from "./pages/VehicleManagement";
 import ServiceManagement  from "./pages/ServiceManagement";
 import InvoicePayment     from "./pages/InvoicePayment";
 import Feedback           from "./pages/Feedback";
+import Profiles           from "./pages/Profiles";   // ← NEW
 
 import "./style.css";
 
@@ -22,27 +23,16 @@ const NAV = [
   { id:"services",  label:"Services",  icon:"🔧", roles:["Admin","Garage Owner"] },
   { id:"invoices",  label:"Invoices",  icon:"🧾", roles:["Admin","Garage Owner"] },
   { id:"feedback",  label:"Feedback",  icon:"⭐", roles:["Admin","Garage Owner","Vehicle Owner"] },
+  { id:"profiles",  label:"Profiles",  icon:"👥", roles:["Admin"] },   // ← NEW — Admin only
 ];
 
 export default function App() {
-  // Always start at landing page (no auto-login from stale storage)
   const [user,       setUser]       = useState(null);
   const [authPage,   setAuthPage]   = useState("landing");
   const [activePage, setActivePage] = useState("dashboard");
 
-  // If you still want auto login from previous session, uncomment below:
-  // useEffect(() => {
-  //   const saved = authService.getCurrentUser();
-  //   if (saved) setUser(saved);
-  // }, []);
-
   const handleLogin    = (userData) => { setUser(userData); setActivePage("dashboard"); };
-  const handleRegister = (userData) => {
-    // After successful registration, stay logged out and show login screen
-    // (as requested: do not directly go to dashboard)
-    setUser(null);
-    setAuthPage("login");
-  };
+  const handleRegister = (userData) => { setUser(null); setAuthPage("login"); };
   const handleLogout   = () => { authService.logout(); setUser(null); setAuthPage("landing"); };
 
   if (!user) {
@@ -85,6 +75,7 @@ export default function App() {
       case "services":   return <ServiceManagement />;
       case "invoices":   return <InvoicePayment />;
       case "feedback":   return <Feedback user={user} />;
+      case "profiles":   return <Profiles user={user} />;   // ← NEW
       default:           return <Dashboard user={user} />;
     }
   };

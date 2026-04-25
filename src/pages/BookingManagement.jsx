@@ -54,7 +54,6 @@ function SearchableDropdown({ value, onChange, options = [], placeholder }) {
   const [open,  setOpen]  = useState(false);
   const [query, setQuery] = useState('');
 
-  // KEY FIX: filter out any null/undefined/non-string entries before rendering
   const safeOptions = options.filter(o => o != null && typeof o === 'string' && o.trim() !== '');
   const filtered = safeOptions.filter(o => o.toLowerCase().includes((query || '').toLowerCase()));
 
@@ -112,14 +111,16 @@ function ServiceMultiDropdown({ value = [], onChange, services = [], vehicleType
   const [open,  setOpen]  = useState(false);
   const [query, setQuery] = useState('');
 
-  // KEY FIX: guard against nulls in services array
   const safeServices = (Array.isArray(services) ? services : [])
     .filter(s => s != null && typeof s.name === 'string');
 
+  // ── KEY FIX: strict filter — only show services assigned to this plate ──
+  // If a service has assignedVehicles array with entries, it MUST include selectedPlate.
+  // Services with empty/missing assignedVehicles are NOT shown when a plate is selected.
   const plateFiltered = safeServices.filter(s => {
-    if (!selectedPlate) return true;
-    const av = s.assignedVehicles;
-    if (!av || av.length === 0) return true;
+    if (!selectedPlate) return true; // no plate selected → show all
+    const av = Array.isArray(s.assignedVehicles) ? s.assignedVehicles.filter(Boolean) : [];
+    if (av.length === 0) return false; // has no assignments → hide when plate is selected
     return av.includes(selectedPlate);
   });
 
@@ -165,8 +166,6 @@ function ServiceMultiDropdown({ value = [], onChange, services = [], vehicleType
     return sum + (s?.price || 0);
   }, 0);
 
-  const isFiltered = selectedPlate && safeServices.some(s => s.assignedVehicles?.length > 0);
-
   return (
     <div style={{ position: 'relative' }}>
       <div onClick={() => setOpen(o => !o)} style={{
@@ -203,7 +202,11 @@ function ServiceMultiDropdown({ value = [], onChange, services = [], vehicleType
           </div>
 
           <div style={{ padding: '5px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center' }}>
-            {isFiltered && <span style={{ fontSize: '.72rem', color: 'var(--cyan)', background: 'rgba(34,211,238,.12)', padding: '1px 8px', borderRadius: 10 }}>🔗 filtered for {selectedPlate}</span>}
+            {selectedPlate && (
+              <span style={{ fontSize: '.72rem', color: 'var(--cyan)', background: 'rgba(34,211,238,.12)', padding: '1px 8px', borderRadius: 10 }}>
+                🔗 {plateFiltered.length} services for {selectedPlate}
+              </span>
+            )}
             <button onClick={selectAll} style={{ fontSize: '.74rem', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>☑ All</button>
             <button onClick={clearAll}  style={{ fontSize: '.74rem', color: 'var(--red)',    background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✕ Clear</button>
             <span style={{ marginLeft: 'auto', fontSize: '.72rem', color: 'var(--text2)' }}>{plateFiltered.length} services</span>
@@ -211,7 +214,17 @@ function ServiceMultiDropdown({ value = [], onChange, services = [], vehicleType
 
           <div style={{ maxHeight: 280, overflowY: 'auto' }}>
             {Object.keys(grouped).length === 0 ? (
-              <div style={{ padding: '16px', textAlign: 'center', fontSize: '.83rem', color: 'var(--text2)' }}>No services found</div>
+              <div style={{ padding: '20px 16px', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🔍</div>
+                <div style={{ fontSize: '.84rem', color: 'var(--text2)', fontWeight: 600 }}>
+                  {selectedPlate ? `No services assigned to ${selectedPlate}` : 'No services found'}
+                </div>
+                {selectedPlate && (
+                  <div style={{ fontSize: '.75rem', color: 'var(--text3)', marginTop: 4 }}>
+                    Assign services to this vehicle from the Services Catalog
+                  </div>
+                )}
+              </div>
             ) : Object.entries(grouped).map(([cat, svcs]) => (
               <div key={cat}>
                 <div style={{ padding: '5px 12px 3px', fontSize: '.67rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: 1, background: '#0d1018', borderBottom: '1px solid var(--border)' }}>{cat}</div>
@@ -312,14 +325,12 @@ export default function BookingManagement() {
 
   const allServices = catalogServices.length > 0 ? catalogServices : LOCAL_SERVICES;
 
-  // KEY FIX: build customer names safely — no nulls
   const customerNames = customers
     .filter(c => c != null && c.fullName != null && String(c.fullName).trim() !== '')
     .map(c => String(c.fullName));
 
   const customerVehicles = vehicles.filter(v => v != null && v.owner === form.customer);
 
-  // KEY FIX: build vehicle options safely — no nulls
   const vehicleOptions = customerVehicles
     .filter(v => v && v.make && v.model && v.plate)
     .map(v => `${v.make} ${v.model} — ${v.plate}`);
@@ -617,7 +628,11 @@ export default function BookingManagement() {
             <div className="field">
               <label>
                 Services *
-                {form.plate && <span style={{ marginLeft: 8, fontSize: '.65rem', background: 'rgba(34,211,238,.15)', color: 'var(--cyan)', padding: '1px 8px', borderRadius: 10 }}>🔗 filtered for {form.plate}</span>}
+                {form.plate && (
+                  <span style={{ marginLeft: 8, fontSize: '.65rem', background: 'rgba(34,211,238,.15)', color: 'var(--cyan)', padding: '1px 8px', borderRadius: 10 }}>
+                    🔗 filtered for {form.plate}
+                  </span>
+                )}
               </label>
               <ServiceMultiDropdown
                 value={Array.isArray(form.services) ? form.services : []}
