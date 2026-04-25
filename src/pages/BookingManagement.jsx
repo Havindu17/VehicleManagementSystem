@@ -88,7 +88,17 @@ function SearchableDropdown({ value, onChange, options = [], placeholder }) {
             />
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-            {filtered.length === 0
+            {query && !safeOptions.some(o => o.toLowerCase() === query.toLowerCase()) && (
+              <div
+                onClick={() => { onChange(query); setQuery(''); setOpen(false); }}
+                style={{ padding: '8px 12px', fontSize: '.85rem', cursor: 'pointer', color: 'var(--accent)', borderBottom: '1px solid var(--border)' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#1a1f2e'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                Use "{query}" (New)
+              </div>
+            )}
+            {filtered.length === 0 && !query
               ? <div style={{ padding: '10px 12px', fontSize: '.83rem', color: 'var(--text2)' }}>No results</div>
               : filtered.map((opt, i) => (
                 <div key={i}
@@ -267,7 +277,10 @@ function ServiceMultiDropdown({ value = [], onChange, services = [], vehicleType
 }
 
 // ════════════════════════════════════════════════════════════
-export default function BookingManagement() {
+export default function BookingManagement({ user }) {
+  const isVehicleOwner = user?.role === 'Vehicle Owner';
+  const displayName = user?.fullName || user?.username;
+
   const [rows,            setRows]            = useState([]);
   const [customers,       setCustomers]       = useState([]);
   const [vehicles,        setVehicles]        = useState([]);
@@ -355,13 +368,35 @@ export default function BookingManagement() {
 
   const handleVehicleSelect = label => {
     const v = customerVehicles.find(x => `${x.make} ${x.model} — ${x.plate}` === label);
-    if (!v) return;
+    if (!v) {
+      // Custom vehicle typed
+      setForm(f => ({ ...f, vehicle: label, vehicleType: detectType(label) }));
+      return;
+    }
     const vName = `${v.make || ''} ${v.model || ''}`.trim();
     const lastBooking = [...rows]
       .filter(r => r.plate === v.plate && r.service)
       .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
     setForm(f => ({ ...f, vehicle: vName, plate: v.plate || '', vehicleType: detectType(vName), services: [], service: '', amount: '' }));
     if (lastBooking?.service) showToast(`💡 Last service for ${v.plate}: "${lastBooking.service}"`);
+  };
+
+  const handlePlateChange = e => {
+    const val = e.target.value.toUpperCase();
+    setForm(f => ({ ...f, plate: val }));
+    const v = vehicles.find(x => x.plate && x.plate.toUpperCase() === val);
+    if (v) {
+      const c = customers.find(x => x.fullName === v.owner);
+      const vName = `${v.make || ''} ${v.model || ''}`.trim();
+      setForm(f => ({
+        ...f,
+        plate: val,
+        customer: v.owner || f.customer,
+        customerPhone: c?.phone || v.ownerPhone || f.customerPhone,
+        vehicle: vName || f.vehicle,
+        vehicleType: vName ? detectType(vName) : f.vehicleType
+      }));
+    }
   };
 
   const handleServicesChange = (names, total) => {
@@ -377,7 +412,12 @@ export default function BookingManagement() {
     ? rows.filter(r => r.plate === form.plate && r.status === 'Completed').sort((a, b) => new Date(b.date) - new Date(a.date))
     : [];
 
-  const filtered = rows.filter(r => {
+  const myPlates = new Set(vehicles.filter(v => v.owner === displayName).map(v => (v.plate || '').toUpperCase()));
+  const renderBookings = isVehicleOwner 
+    ? rows.filter(r => myPlates.has((r.plate || '').toUpperCase()) || r.customer === displayName)
+    : rows;
+
+  const filtered = renderBookings.filter(r => {
     const q = search.toLowerCase();
     return (
       ((r.bookingCode || '').toLowerCase().includes(q) ||
@@ -480,11 +520,11 @@ export default function BookingManagement() {
 
       <div className="stats-row stats-5">
         {[
-          { icon: '📅', val: rows.length,                                         label: 'Total',       color: 'sc-gold'   },
-          { icon: '⏳', val: rows.filter(r => r.status === 'Pending').length,     label: 'Pending',     color: 'sc-orange' },
-          { icon: '✅', val: rows.filter(r => r.status === 'Approved').length,    label: 'Approved',    color: 'sc-blue'   },
-          { icon: '🔧', val: rows.filter(r => r.status === 'In Progress').length, label: 'In Progress', color: 'sc-cyan'   },
-          { icon: '🏁', val: rows.filter(r => r.status === 'Completed').length,   label: 'Completed',   color: 'sc-green'  },
+          { icon: '📅', val: renderBookings.length,                                         label: 'Total',       color: 'sc-gold'   },
+          { icon: '⏳', val: renderBookings.filter(r => r.status === 'Pending').length,     label: 'Pending',     color: 'sc-orange' },
+          { icon: '✅', val: renderBookings.filter(r => r.status === 'Approved').length,    label: 'Approved',    color: 'sc-blue'   },
+          { icon: '🔧', val: renderBookings.filter(r => r.status === 'In Progress').length, label: 'In Progress', color: 'sc-cyan'   },
+          { icon: '🏁', val: renderBookings.filter(r => r.status === 'Completed').length,   label: 'Completed',   color: 'sc-green'  },
         ].map(s => (
           <div key={s.label} className={`stat-card ${s.color}`}>
             <span className="stat-icon">{s.icon}</span>
@@ -565,7 +605,7 @@ export default function BookingManagement() {
           </div>
         )}
         <div className="tfoot">
-          <span>{filtered.length} of {rows.length} bookings</span>
+          <span>{filtered.length} of {renderBookings.length} bookings</span>
           <span>Total: LKR {filtered.reduce((a, r) => a + Number(r.amount || 0), 0).toLocaleString()}</span>
         </div>
       </div>
@@ -615,7 +655,7 @@ export default function BookingManagement() {
               </div>
               <div className="field">
                 <label>Plate No.</label>
-                <input name="plate" value={form.plate || ''} onChange={h} placeholder="CAB-1234" />
+                <input name="plate" value={form.plate || ''} onChange={handlePlateChange} placeholder="CAB-1234" />
               </div>
             </div>
 

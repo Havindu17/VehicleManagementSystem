@@ -158,7 +158,7 @@ export default function Profiles({ user }) {
     setError("");
     try {
       // Uses api.get() from utils/api.js — automatically sends autoserve_token
-      const data = await api.get("/users");
+      const data = await api.get("/auth/users");
       setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err.message || "Failed to load users.");

@@ -15,7 +15,7 @@ const statusBadge = s => {
 };
 
 export default function Dashboard({ user }) {
-  const displayName = user?.fullName || user?.name || "Admin";
+  const displayName = user?.fullName || user?.username || "Admin";
   const isGarageOwner = user?.role === "Garage Owner";
   const isVehicleOwner = user?.role === "Vehicle Owner" || (!isGarageOwner && user?.role !== "Admin");
   const hour  = new Date().getHours();
@@ -95,7 +95,7 @@ export default function Dashboard({ user }) {
         }
 
         const totalRevenue = invoices.reduce((a, inv) => a + Number(inv.paid || 0), 0);
-        const myPendingPayments = invoices.filter(i => i.customer === displayName && (i.status === 'Unpaid' || i.status === 'Partial')).length;
+        const myPendingPayments = invoices.filter(i => i.customer === displayName && (i.status === 'Pending' || i.status === 'Partial')).length;
         const myBookingsCount = bookings.filter(b => b.customer === displayName).length;
         const myVehiclesCount = vehicles.filter(v => v.owner === displayName).length;
 
@@ -172,12 +172,7 @@ export default function Dashboard({ user }) {
           <div className="dash-banner-tag">🏆 Dashboard Overview</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <h1>{greet}, <span>{displayName}</span> 👋</h1>
-            {!isGarageOwner && !isVehicleOwner && (
-              <div style={{ display: 'flex', gap: 6, marginTop: -5 }}>
-                <button className="btn btn-outline btn-xs" onClick={openEditProfile}>✏️ Edit Profile</button>
-                <button className="btn btn-danger btn-xs" onClick={() => setConfirmObj({ isOpen: true, id: user.id })}>🗑 Delete Account</button>
-              </div>
-            )}
+
           </div>
           <p>Here's what's happening at your service center today.</p>
         </div>

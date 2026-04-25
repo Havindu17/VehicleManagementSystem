@@ -21,7 +21,7 @@ const NAV = [
   { id:"customers", label:"Customers", icon:"👤", roles:["Admin"] },
   { id:"vehicles",  label:"Vehicles",  icon:"🚗", roles:["Admin","Vehicle Owner"] },
   { id:"services",  label:"Services",  icon:"🔧", roles:["Admin","Garage Owner"] },
-  { id:"invoices",  label:"Invoices",  icon:"🧾", roles:["Admin","Garage Owner"] },
+  { id:"invoices",  label:"Invoices",  icon:"🧾", roles:["Admin","Garage Owner","Vehicle Owner"] },
   { id:"feedback",  label:"Feedback",  icon:"⭐", roles:["Admin","Garage Owner","Vehicle Owner"] },
   { id:"profiles",  label:"Profiles",  icon:"👥", roles:["Admin"] },   // ← NEW — Admin only
 ];
@@ -73,7 +73,7 @@ export default function App() {
       case "customers":  return <CustomerManagement />;
       case "vehicles":   return <VehicleManagement user={user} />;
       case "services":   return <ServiceManagement />;
-      case "invoices":   return <InvoicePayment />;
+      case "invoices":   return <InvoicePayment user={user} />;
       case "feedback":   return <Feedback user={user} />;
       case "profiles":   return <Profiles user={user} />;   // ← NEW
       default:           return <Dashboard user={user} />;

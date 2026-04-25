@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import ExportBtn from '../components/Exportbtn';
-import { vehicleService, customerService } from '../utils/api';
+import { vehicleService, customerService, authService } from '../utils/api';
 import ConfirmModal from '../components/ConfirmModal';
 import "../style.css";
 
@@ -163,9 +163,22 @@ export default function VehicleManagement() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [v, c] = await Promise.all([vehicleService.getAll(), customerService.getAll()]);
+      const [v, c, users] = await Promise.all([
+        vehicleService.getAll(), 
+        customerService.getAll().catch(()=>[]),
+        authService.getAllUsers().catch(()=>[])
+      ]);
+      
+      const combined = [...c];
+      const vehicleOwners = users.filter(u => u.role === 'Vehicle Owner');
+      vehicleOwners.forEach(vo => {
+        if (!combined.find(cust => cust.fullName === vo.fullName || cust.fullName === vo.username)) {
+           combined.push({ fullName: vo.fullName || vo.username, phone: vo.phone || '' });
+        }
+      });
+      
       setRows(v);
-      setCustomers(c);
+      setCustomers(combined);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   }, []);

@@ -1,26 +1,30 @@
 import { useState, useEffect, useCallback } from 'react';
 import ExportBtn from '../components/Exportbtn';
-import { invoiceService, bookingService } from '../utils/api';
+import { invoiceService, bookingService, vehicleService } from '../utils/api';
 import ConfirmModal from '../components/ConfirmModal';
 import "../style.css";
 
-const ALL_STATUS = ['Unpaid', 'Partial', 'Paid', 'Overdue'];
-const STATUS_C   = { Paid:'bg-green', Unpaid:'bg-orange', Partial:'bg-blue', Overdue:'bg-red' };
+const ALL_STATUS = ['Pending', 'Partial', 'Paid', 'Overdue'];
+const STATUS_C   = { Paid:'bg-green', Pending:'bg-orange', Partial:'bg-blue', Overdue:'bg-red' };
 const EMPTY_INV  = {
   bookingId:'', bookingCode:'',
   customer:'', customerPhone:'',
   vehicle:'', plate:'', service:'',
   date: new Date().toISOString().slice(0,10),
   dueDate:'', total:'', paid:'0',
-  status:'Unpaid', notes:'',
+  status:'Pending', notes:'',
 };
 
 const fmt  = n => 'LKR ' + Number(n||0).toLocaleString();
 const fmtK = n => { const v=Number(n||0); return v>=1000?`LKR ${(v/1000).toFixed(1)}K`:`LKR ${v}`; };
 
-export default function InvoicePayment() {
+export default function InvoicePayment({ user }) {
+  const isVehicleOwner = user?.role === 'Vehicle Owner';
+  const displayName = user?.fullName || user?.username;
+
   const [invoices,      setInvoices]      = useState([]);
   const [bookings,      setBookings]      = useState([]);
+  const [vehicles,      setVehicles]      = useState([]);
   const [search,        setSearch]        = useState('');
   const [statusFilter,  setStatusFilter]  = useState('All');
   const [modal,         setModal]         = useState(false);
@@ -32,6 +36,10 @@ export default function InvoicePayment() {
   const [step,          setStep]          = useState('pick');
   const [bookingSearch, setBookingSearch] = useState('');
   const [confirmObj,    setConfirmObj]    = useState({ isOpen: false, id: null });
+  const [payModal,      setPayModal]      = useState(null);
+  const [payForm,       setPayForm]       = useState({ amount: '', method: 'Card', slipBase64: '' });
+  const [successMsg,    setSuccessMsg]    = useState('');
+  const [errorMsg,      setErrorMsg]      = useState('');
 
   const showToast = msg => { setToast(msg); setTimeout(()=>setToast(''),2500); };
   const h = e => setForm(f=>({...f,[e.target.name]:e.target.value}));
@@ -40,9 +48,10 @@ export default function InvoicePayment() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [inv, bk] = await Promise.all([
+      const [inv, bk, veh] = await Promise.all([
         invoiceService.getAll(),
         bookingService.getAll(),
+        vehicleService.getAll().catch(() => [])
       ]);
 
       // Auto-create invoices for Completed bookings with no invoice
@@ -52,7 +61,7 @@ export default function InvoicePayment() {
       );
 
       let finalInv = inv;
-      if (missing.length > 0) {
+      if (!isVehicleOwner && missing.length > 0) {
         const today  = new Date().toISOString().slice(0,10);
         const due    = new Date(); due.setDate(due.getDate()+14);
         const dueStr = due.toISOString().slice(0,10);
@@ -61,7 +70,7 @@ export default function InvoicePayment() {
           customer:b.customer||'', customerPhone:b.customerPhone||'',
           vehicle:b.vehicle||'', plate:b.plate||'', service:b.service||'',
           date:today, dueDate:dueStr,
-          total:b.amount||'0', paid:'0', status:'Unpaid',
+          total:b.amount||'0', paid:'0', status:'Pending',
           notes:'Auto-generated from completed booking',
         })));
         finalInv = await invoiceService.getAll();
@@ -71,19 +80,26 @@ export default function InvoicePayment() {
 
       setInvoices(finalInv);
       setBookings(bk.filter(b=>['Approved','In Progress','Completed'].includes(b.status)));
+      setVehicles(veh);
     } catch(err){ console.error(err); }
     finally { setLoading(false); }
-  },[]);
+  }, [isVehicleOwner]);
 
   useEffect(()=>{ loadAll(); },[loadAll]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const totalInvoiced    = invoices.reduce((a,i)=>a+Number(i.total||0),0);
-  const totalCollected   = invoices.reduce((a,i)=>a+Number(i.paid||0),0);
-  const totalOutstanding = invoices.filter(i=>i.status!=='Paid').reduce((a,i)=>a+(Number(i.total||0)-Number(i.paid||0)),0);
-  const overdueCount     = invoices.filter(i=>i.status==='Overdue').length;
+  const myPlates = new Set(vehicles.filter(v => v.owner === displayName).map(v => (v.plate || '').toUpperCase()));
 
-  const filtered = invoices.filter(i=>{
+  const renderInvoices = isVehicleOwner 
+    ? invoices.filter(i => myPlates.has((i.plate || '').toUpperCase()) || i.customer === displayName)
+    : invoices;
+
+  const totalInvoiced    = renderInvoices.length;
+  const pendingCount     = renderInvoices.filter(i=>i.status==='Pending').length;
+  const partialCount     = renderInvoices.filter(i=>i.status==='Partial').length;
+  const paidCount        = renderInvoices.filter(i=>i.status==='Paid').length;
+
+  const filtered = renderInvoices.filter(i=>{
     const q=search.toLowerCase();
     return (
       (i.invoiceCode||'').toLowerCase().includes(q)||
@@ -119,7 +135,7 @@ export default function InvoicePayment() {
       vehicle:b.vehicle||'', plate:b.plate||'', service:b.service||'',
       date:new Date().toISOString().slice(0,10),
       dueDate:due.toISOString().slice(0,10),
-      total:b.amount||'', paid:'0', status:'Unpaid', notes:'',
+      total:b.amount||'', paid:'0', status:'Pending', notes:'',
     });
     setStep('form');
   };
@@ -135,12 +151,28 @@ export default function InvoicePayment() {
     setModal(true);
   };
 
+  const handlePlateChange = e => {
+    const val = e.target.value.toUpperCase();
+    setForm(f => ({ ...f, plate: val }));
+    const v = vehicles.find(x => x.plate && x.plate.toUpperCase() === val);
+    if (v) {
+      const vName = `${v.make || ''} ${v.model || ''}`.trim();
+      setForm(f => ({
+        ...f,
+        plate: val,
+        customer: v.owner || f.customer,
+        customerPhone: v.ownerPhone || f.customerPhone,
+        vehicle: vName || f.vehicle,
+      }));
+    }
+  };
+
   const save = async () => {
     if(!form.customer||!form.total||!form.date){
-      alert('Customer, total and date are required.'); return;
+      setErrorMsg('Customer, total and date are required.'); return;
     }
     const total=Number(form.total), paid=Number(form.paid);
-    let status='Unpaid';
+    let status='Pending';
     if(paid>=total) status='Paid';
     else if(paid>0) status='Partial';
     else if(form.dueDate&&new Date(form.dueDate)<new Date()) status='Overdue';
@@ -149,7 +181,7 @@ export default function InvoicePayment() {
       if(editId){ await invoiceService.update(editId,payload); showToast('✅ Invoice updated'); }
       else      { await invoiceService.create(payload);        showToast('✅ Invoice created'); }
       setModal(false); loadAll();
-    }catch(err){ alert(err.message); }
+    }catch(err){ setErrorMsg(err.message); }
   };
 
   const del = id => {
@@ -161,7 +193,7 @@ export default function InvoicePayment() {
       await invoiceService.delete(confirmObj.id); 
       showToast('🗑 Deleted'); 
       loadAll(); 
-    } catch(err) { alert(err.message); }
+    } catch(err) { setErrorMsg(err.message); }
     finally { setConfirmObj({ isOpen: false, id: null }); }
   };
 
@@ -277,16 +309,16 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
         </div>
         <div className="page-actions">
           <ExportBtn data={exportData} filename="invoices-export" title="Invoice & Payment Report"/>
-          <button className="btn btn-accent" onClick={openNew}>＋ New Invoice</button>
+          {!isVehicleOwner && <button className="btn btn-accent" onClick={openNew}>＋ New Invoice</button>}
         </div>
       </div>
 
       <div className="stats-row stats-4">
         {[
-          {icon:'💰',val:fmtK(totalInvoiced),   label:'Total Invoiced',color:'sc-gold'  },
-          {icon:'✅',val:fmtK(totalCollected),  label:'Collected',     color:'sc-green' },
-          {icon:'⌛',val:fmtK(totalOutstanding),label:'Outstanding',   color:'sc-orange'},
-          {icon:'🔴',val:overdueCount,           label:'Overdue',       color:'sc-red'   },
+          {icon:'🧾',val:totalInvoiced, label:'Total Invoices', color:'sc-gold'  },
+          {icon:'⌛',val:pendingCount,  label:'Pending',        color:'sc-orange'},
+          {icon:'⏳',val:partialCount,  label:'Partial',        color:'sc-blue'},
+          {icon:'✅',val:paidCount,     label:'Paid',           color:'sc-green' },
         ].map(s=>(
           <div key={s.label} className={`stat-card ${s.color}`}>
             <span className="stat-icon">{s.icon}</span>
@@ -337,8 +369,18 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
                         <div style={{display:'flex',gap:4}}>
                           <button className="btn btn-blue btn-xs" onClick={()=>setViewModal(inv)}>👁</button>
                           <button className="btn btn-outline btn-xs" title="Generate PDF" onClick={()=>generateInvoice(inv)}>📄</button>
-                          <button className="btn btn-outline btn-xs" onClick={()=>openEdit(inv)}>✏️</button>
-                          <button className="btn btn-danger btn-xs" onClick={()=>del(inv.id)}>🗑</button>
+                          {!isVehicleOwner && (
+                            <>
+                              <button className="btn btn-outline btn-xs" onClick={()=>openEdit(inv)}>✏️</button>
+                              <button className="btn btn-danger btn-xs" onClick={()=>del(inv.id)}>🗑</button>
+                            </>
+                          )}
+                          {isVehicleOwner && ['Pending', 'Partial', 'Overdue'].includes(inv.status) && (
+                            <button className="btn btn-green btn-xs" onClick={()=> {
+                              setPayModal(inv);
+                              setPayForm({ amount: Number(inv.total||0)-Number(inv.paid||0), method: 'Card', slipBase64: '' });
+                            }}>💳 Pay</button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -434,12 +476,12 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
                 )}
 
                 <div className="form-row">
+                  <div className="field"><label>Plate No.</label><input name="plate" value={form.plate} onChange={handlePlateChange} placeholder="CAB-1234" autoFocus /></div>
                   <div className="field"><label>Customer *</label><input name="customer" value={form.customer} onChange={h} placeholder="Customer name"/></div>
-                  <div className="field"><label>Phone</label><input name="customerPhone" value={form.customerPhone} onChange={h} placeholder="07X-XXXXXXX"/></div>
                 </div>
                 <div className="form-row">
+                  <div className="field"><label>Phone</label><input name="customerPhone" value={form.customerPhone} onChange={h} placeholder="07X-XXXXXXX"/></div>
                   <div className="field"><label>Vehicle</label><input name="vehicle" value={form.vehicle} onChange={h} placeholder="e.g. Toyota Camry"/></div>
-                  <div className="field"><label>Plate No.</label><input name="plate" value={form.plate} onChange={h} placeholder="CAB-1234"/></div>
                 </div>
                 <div className="field"><label>Service</label><input name="service" value={form.service} onChange={h} placeholder="Service performed"/></div>
                 <div className="form-row">
@@ -522,8 +564,116 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
             <div className="modal-foot">
               <button className="btn btn-outline" onClick={()=>setViewModal(null)}>Close</button>
               <button className="btn btn-blue" onClick={()=>generateInvoice(viewModal)}>📄 Generate Invoice</button>
-              <button className="btn btn-accent" onClick={()=>{openEdit(viewModal);setViewModal(null);}}>✏️ Edit</button>
+              {!isVehicleOwner && <button className="btn btn-accent" onClick={()=>{openEdit(viewModal);setViewModal(null);}}>✏️ Edit</button>}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PAYMENT MODAL ─────────────────────────────────────────────────── */}
+      {payModal && (
+        <div className="overlay" onClick={e=>e.target===e.currentTarget&&setPayModal(null)}>
+          <div className="modal" style={{ maxWidth: 440 }}>
+            <div className="modal-head">
+              <div className="modal-title">💳 Make Payment</div>
+              <button className="modal-close" onClick={()=>setPayModal(null)}>×</button>
+            </div>
+            
+            <div style={{ marginBottom: 15, background: 'var(--surface2)', padding: 12, borderRadius: 8 }}>
+              <div style={{ fontSize: '.85rem', color: 'var(--text2)', marginBottom: 4 }}>Invoice: <span className="mono text-accent">{payModal.invoiceCode}</span></div>
+              <div style={{ fontSize: '.85rem', color: 'var(--text2)' }}>Balance Due: <span className="mono text-red" style={{fontWeight:700}}>LKR {(Number(payModal.total||0)-Number(payModal.paid||0)).toLocaleString()}</span></div>
+            </div>
+
+            <div className="field">
+              <label>Payment Amount (LKR)</label>
+              <input 
+                type="number" 
+                min="1" 
+                max={Number(payModal.total||0)-Number(payModal.paid||0)}
+                value={payForm.amount} 
+                onChange={e=>setPayForm(f=>({...f, amount: e.target.value.replace(/[^0-9]/g, '')}))} 
+              />
+            </div>
+
+            <div className="field">
+              <label>Payment Method</label>
+              <select value={payForm.method} onChange={e=>setPayForm(f=>({...f, method: e.target.value}))}>
+                <option>Card</option>
+                <option>Cash</option>
+                <option>Bank Deposit</option>
+              </select>
+            </div>
+
+            {payForm.method === 'Bank Deposit' && (
+              <div className="field">
+                <label>Upload Payment Slip <span style={{color:'var(--text3)'}}>(Required)</span></label>
+                <div style={{ position: 'relative', overflow: 'hidden', display: 'inline-block' }}>
+                  <button className="btn btn-outline btn-sm">📎 Choose File</button>
+                  <input type="file" accept="image/*" style={{ position: 'absolute', left: 0, top: 0, opacity: 0, cursor: 'pointer', height: '100%' }} onChange={e => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => setPayForm(f => ({...f, slipBase64: reader.result}));
+                      reader.readAsDataURL(file);
+                    }
+                  }} />
+                </div>
+                {payForm.slipBase64 && <div style={{marginTop:8, fontSize:'.8rem', color:'var(--green)'}}>✓ Slip attached successfully</div>}
+              </div>
+            )}
+
+            <div className="modal-foot">
+              <button className="btn btn-outline" onClick={()=>setPayModal(null)}>Cancel</button>
+              <button className="btn btn-green" onClick={async () => {
+                const amt = Number(payForm.amount);
+                const maxAmt = Number(payModal.total || 0) - Number(payModal.paid || 0);
+                if (amt <= 0) return setErrorMsg('Please enter a valid payment amount.');
+                if (amt > maxAmt) return setErrorMsg(`Amount cannot exceed the balance due of LKR ${maxAmt.toLocaleString()}`);
+                if (payForm.method === 'Bank Deposit' && !payForm.slipBase64) return setErrorMsg('Please upload the payment slip image.');
+                
+                const newPaid = Number(payModal.paid || 0) + amt;
+                const total = Number(payModal.total || 0);
+                let newStatus = 'Partial';
+                if (newPaid >= total) newStatus = 'Paid';
+                
+                try {
+                  await invoiceService.update(payModal.id, {
+                    ...payModal,
+                    paid: newPaid,
+                    status: newStatus,
+                    payMethod: payForm.method,
+                    slipImage: payForm.slipBase64
+                  });
+                  setPayModal(null);
+                  loadAll();
+                  setSuccessMsg('Payment submitted successfully! Thank you.');
+                } catch(err) { setErrorMsg(err.message); }
+              }}>Confirm Payment</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Success Message Modal ── */}
+      {successMsg && (
+        <div className="overlay" style={{ zIndex: 9999 }}>
+          <div className="modal" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
+            <div style={{ fontSize: '3.5rem', marginBottom: '15px' }}>✅</div>
+            <h3 style={{ marginBottom: '10px', fontSize: '1.4rem' }}>Success!</h3>
+            <p style={{ color: 'var(--text2)', marginBottom: '25px', lineHeight: '1.5' }}>{successMsg}</p>
+            <button className="btn btn-accent" style={{ width: '100%', padding: '12px' }} onClick={() => setSuccessMsg("")}>Okay</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Error Message Modal ── */}
+      {errorMsg && (
+        <div className="overlay" style={{ zIndex: 9999 }}>
+          <div className="modal" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px', borderTop: '4px solid var(--red)' }}>
+            <div style={{ fontSize: '3.5rem', marginBottom: '15px' }}>⚠️</div>
+            <h3 style={{ marginBottom: '10px', fontSize: '1.4rem' }}>Oops!</h3>
+            <p style={{ color: 'var(--text2)', marginBottom: '25px', lineHeight: '1.5' }}>{errorMsg}</p>
+            <button className="btn btn-danger" style={{ width: '100%', padding: '12px' }} onClick={() => setErrorMsg("")}>Okay</button>
           </div>
         </div>
       )}

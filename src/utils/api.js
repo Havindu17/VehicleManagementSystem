@@ -59,6 +59,7 @@ export const authService = {
     return s ? JSON.parse(s) : null;
   },
   isLoggedIn: () => !!localStorage.getItem('autoserve_user'),
+  getAllUsers: () => api.get('/auth/users'),
 };
 
 // ── Customers ─────────────────────────────────────────────
