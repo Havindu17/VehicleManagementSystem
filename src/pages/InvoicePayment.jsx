@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import ExportBtn from '../components/Exportbtn';
 import { invoiceService, bookingService } from '../utils/api';
+import ConfirmModal from '../components/ConfirmModal';
 import "../style.css";
 
 const ALL_STATUS = ['Unpaid', 'Partial', 'Paid', 'Overdue'];
@@ -30,6 +31,7 @@ export default function InvoicePayment() {
   const [loading,       setLoading]       = useState(false);
   const [step,          setStep]          = useState('pick');
   const [bookingSearch, setBookingSearch] = useState('');
+  const [confirmObj,    setConfirmObj]    = useState({ isOpen: false, id: null });
 
   const showToast = msg => { setToast(msg); setTimeout(()=>setToast(''),2500); };
   const h = e => setForm(f=>({...f,[e.target.name]:e.target.value}));
@@ -150,10 +152,17 @@ export default function InvoicePayment() {
     }catch(err){ alert(err.message); }
   };
 
-  const del = async id => {
-    if(!confirm('Delete invoice?')) return;
-    try{ await invoiceService.delete(id); showToast('🗑 Deleted'); loadAll(); }
-    catch(err){ alert(err.message); }
+  const del = id => {
+    setConfirmObj({ isOpen: true, id });
+  };
+
+  const handleConfirmDelete = async () => {
+    try { 
+      await invoiceService.delete(confirmObj.id); 
+      showToast('🗑 Deleted'); 
+      loadAll(); 
+    } catch(err) { alert(err.message); }
+    finally { setConfirmObj({ isOpen: false, id: null }); }
   };
 
   // ── Generate Invoice (opens new tab) ─────────────────────────────────────
@@ -520,6 +529,13 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
       )}
 
       {toast&&<div className="toast-stack"><div className="toast toast-success">{toast}</div></div>}
+      <ConfirmModal
+        isOpen={confirmObj.isOpen}
+        title="Delete Invoice"
+        message="Are you sure you want to delete this invoice? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmObj({ isOpen: false, id: null })}
+      />
     </div>
   );
 }

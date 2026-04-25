@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import ExportBtn from '../components/Exportbtn';
 import { vehicleService, customerService } from '../utils/api';
+import ConfirmModal from '../components/ConfirmModal';
 import "../style.css";
 
 const EMPTY = { plate: '', owner: '', ownerPhone: '', make: '', model: '', year: '', color: '', fuel: 'Petrol', mileage: '', lastService: '', nextService: '', insuranceExp: '', revenueExp: '', emissionExp: '', status: 'Active' };
@@ -144,6 +145,7 @@ export default function VehicleManagement() {
   const [toast, setToast]         = useState('');
   const [loading, setLoading]     = useState(false);
   const [errors, setErrors]       = useState({});   // ← validation state
+  const [confirmObj, setConfirmObj] = useState({ isOpen: false, id: null });
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 2500); };
 
@@ -225,13 +227,17 @@ export default function VehicleManagement() {
     } catch (err) { alert(err.message); }
   };
 
-  const del = async id => {
-    if (!confirm('Remove vehicle?')) return;
+  const del = id => {
+    setConfirmObj({ isOpen: true, id });
+  };
+
+  const handleConfirmDelete = async () => {
     try {
-      await vehicleService.delete(id);
+      await vehicleService.delete(confirmObj.id);
       showToast('🗑 Removed');
       loadAll();
     } catch (err) { alert(err.message); }
+    finally { setConfirmObj({ isOpen: false, id: null }); }
   };
 
   const exportData = filtered.map(r => ({
@@ -599,6 +605,13 @@ export default function VehicleManagement() {
           <div className="toast toast-success">{toast}</div>
         </div>
       )}
+      <ConfirmModal
+        isOpen={confirmObj.isOpen}
+        title="Remove Vehicle"
+        message="Are you sure you want to remove this vehicle? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmObj({ isOpen: false, id: null })}
+      />
     </div>
   );
 }

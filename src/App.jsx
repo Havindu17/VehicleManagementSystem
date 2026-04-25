@@ -17,8 +17,8 @@ import "./style.css";
 const NAV = [
   { id:"dashboard", label:"Dashboard", icon:"⊞",  roles:["Admin","Garage Owner","Vehicle Owner"] },
   { id:"bookings",  label:"Bookings",  icon:"📅", roles:["Admin","Garage Owner","Vehicle Owner"] },
-  { id:"customers", label:"Customers", icon:"👤", roles:["Admin","Garage Owner"] },
-  { id:"vehicles",  label:"Vehicles",  icon:"🚗", roles:["Admin","Garage Owner","Vehicle Owner"] },
+  { id:"customers", label:"Customers", icon:"👤", roles:["Admin"] },
+  { id:"vehicles",  label:"Vehicles",  icon:"🚗", roles:["Admin","Vehicle Owner"] },
   { id:"services",  label:"Services",  icon:"🔧", roles:["Admin","Garage Owner"] },
   { id:"invoices",  label:"Invoices",  icon:"🧾", roles:["Admin","Garage Owner"] },
   { id:"feedback",  label:"Feedback",  icon:"⭐", roles:["Admin","Garage Owner","Vehicle Owner"] },
@@ -79,7 +79,7 @@ export default function App() {
   const renderPage = () => {
     switch (activePage) {
       case "dashboard":  return <Dashboard user={user} />;
-      case "bookings":   return <BookingManagement />;
+      case "bookings":   return <BookingManagement user={user} />;
       case "customers":  return <CustomerManagement />;
       case "vehicles":   return <VehicleManagement user={user} />;
       case "services":   return <ServiceManagement />;

@@ -126,6 +126,32 @@ export default function Register({ onRegister, onBack }) {
       case 'email':    return validators.email(value);
       case 'password': return validators.password(value);
       case 'confirm':  return validators.confirmPassword(value, allForm.password);
+      case 'phone':
+        if (!value) return 'Phone number is required.';
+        if (!/^\d{10}$/.test(value)) return 'Must be exactly 10 digits.';
+        return '';
+      case 'nic':
+        if (!value) return 'NIC is required.';
+        if (!/^(\d{9,10}[vV]|\d{12})$/.test(value)) return 'Must be 12 digits or 10 digits ending with V.';
+        return '';
+      case 'businessName':
+        if (allForm.role === 'Garage Owner' && (!value || !value.trim())) return 'Business Name is required.';
+        return '';
+      case 'businessReg':
+        if (allForm.role === 'Garage Owner' && (!value || !value.trim())) return 'Business Reg. No. is required.';
+        return '';
+      case 'garageAddress':
+        if (allForm.role === 'Garage Owner' && (!value || !value.trim())) return 'Garage Address is required.';
+        return '';
+      case 'openHours':
+        if (allForm.role === 'Garage Owner' && (!value || !value.trim())) return 'Operating Hours are required.';
+        return '';
+      case 'garagePhone':
+        if (allForm.role === 'Garage Owner') {
+          if (!value) return 'Garage Phone is required.';
+          if (!/^\d{10}$/.test(value)) return 'Must be exactly 10 digits.';
+        }
+        return '';
       default:         return '';
     }
   };
@@ -159,7 +185,7 @@ export default function Register({ onRegister, onBack }) {
     e.preventDefault();
     setServerError("");
 
-    const step1Fields = ['fullName', 'username', 'email'];
+    const step1Fields = ['fullName', 'username', 'email', 'phone', 'nic'];
     const newErrors = {};
     const newTouched = {};
 
@@ -181,6 +207,9 @@ export default function Register({ onRegister, onBack }) {
     setServerError("");
 
     const step2Fields = ['password', 'confirm'];
+    if (form.role === 'Garage Owner') {
+      step2Fields.push('businessName', 'businessReg', 'garageAddress', 'openHours', 'garagePhone');
+    }
     const newErrors = {};
     const newTouched = {};
 
@@ -329,19 +358,27 @@ export default function Register({ onRegister, onBack }) {
                 </div>
 
                 <div className="avsc-field">
-                  <label>Phone</label>
+                  <label>Phone *</label>
                   <div className="avsc-input-wrap">
                     <span className="avsc-input-icon">📞</span>
-                    <input name="phone" value={form.phone} onChange={h} placeholder="07X-XXXXXXX" />
+                    <input name="phone" value={form.phone} onChange={h} 
+                      onBlur={() => handleBlur('phone')}
+                      placeholder="07X-XXXXXXX" 
+                      style={borderStyle('phone')} />
                   </div>
+                  <FieldError msg={touched.phone && errors.phone} />
                 </div>
 
                 <div className="avsc-field">
-                  <label>NIC</label>
+                  <label>NIC *</label>
                   <div className="avsc-input-wrap">
                     <span className="avsc-input-icon">🪪</span>
-                    <input name="nic" value={form.nic} onChange={h} placeholder="9XXXXXXXXV" />
+                    <input name="nic" value={form.nic} onChange={h} 
+                      onBlur={() => handleBlur('nic')}
+                      placeholder="9XXXXXXXXV" 
+                      style={borderStyle('nic')} />
                   </div>
+                  <FieldError msg={touched.nic && errors.nic} />
                 </div>
 
                 <div className="avsc-field">
@@ -388,39 +425,59 @@ export default function Register({ onRegister, onBack }) {
 
                 {form.role === "Garage Owner" && (<>
                   <div className="avsc-field">
-                    <label>Business Name</label>
+                    <label>Business Name *</label>
                     <div className="avsc-input-wrap">
                       <span className="avsc-input-icon">🏪</span>
-                      <input name="businessName" value={form.businessName} onChange={h} placeholder="ABC Auto Garage" />
+                      <input name="businessName" value={form.businessName} onChange={h} 
+                        onBlur={() => handleBlur('businessName')}
+                        placeholder="ABC Auto Garage" 
+                        style={borderStyle('businessName')} />
                     </div>
+                    <FieldError msg={touched.businessName && errors.businessName} />
                   </div>
                   <div className="avsc-field">
-                    <label>Business Reg. No.</label>
+                    <label>Business Reg. No. *</label>
                     <div className="avsc-input-wrap">
                       <span className="avsc-input-icon">📋</span>
-                      <input name="businessReg" value={form.businessReg} onChange={h} placeholder="REG-XXXXX" />
+                      <input name="businessReg" value={form.businessReg} onChange={h} 
+                        onBlur={() => handleBlur('businessReg')}
+                        placeholder="REG-XXXXX" 
+                        style={borderStyle('businessReg')} />
                     </div>
+                    <FieldError msg={touched.businessReg && errors.businessReg} />
                   </div>
                   <div className="avsc-field" style={{ gridColumn: "1/-1" }}>
-                    <label>Garage Address</label>
+                    <label>Garage Address *</label>
                     <div className="avsc-input-wrap">
                       <span className="avsc-input-icon">📍</span>
-                      <input name="garageAddress" value={form.garageAddress} onChange={h} placeholder="Full address" />
+                      <input name="garageAddress" value={form.garageAddress} onChange={h} 
+                        onBlur={() => handleBlur('garageAddress')}
+                        placeholder="Full address" 
+                        style={borderStyle('garageAddress')} />
                     </div>
+                    <FieldError msg={touched.garageAddress && errors.garageAddress} />
                   </div>
                   <div className="avsc-field">
-                    <label>Operating Hours</label>
+                    <label>Operating Hours *</label>
                     <div className="avsc-input-wrap">
                       <span className="avsc-input-icon">🕐</span>
-                      <input name="openHours" value={form.openHours} onChange={h} placeholder="8AM – 6PM" />
+                      <input name="openHours" value={form.openHours} onChange={h} 
+                        onBlur={() => handleBlur('openHours')}
+                        placeholder="8AM – 6PM" 
+                        style={borderStyle('openHours')} />
                     </div>
+                    <FieldError msg={touched.openHours && errors.openHours} />
                   </div>
                   <div className="avsc-field">
-                    <label>Garage Phone</label>
+                    <label>Garage Phone *</label>
                     <div className="avsc-input-wrap">
                       <span className="avsc-input-icon">📞</span>
-                      <input name="garagePhone" value={form.garagePhone} onChange={h} placeholder="011-XXXXXXX" />
+                      <input name="garagePhone" value={form.garagePhone} onChange={h} 
+                        onBlur={() => handleBlur('garagePhone')}
+                        placeholder="011-XXXXXXX" 
+                        style={borderStyle('garagePhone')} />
                     </div>
+                    <FieldError msg={touched.garagePhone && errors.garagePhone} />
                   </div>
                 </>)}
 

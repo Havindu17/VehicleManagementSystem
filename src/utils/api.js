@@ -46,6 +46,14 @@ export const authService = {
     localStorage.removeItem('autoserve_token');
     localStorage.removeItem('autoserve_user');
   },
+  updateProfile: async (id, data) => {
+    const user = await api.put(`/auth/update/${id}`, data);
+    // update localStorage
+    const current = JSON.parse(localStorage.getItem('autoserve_user') || '{}');
+    localStorage.setItem('autoserve_user', JSON.stringify({ ...current, ...user }));
+    return user;
+  },
+  deleteProfile: (id) => api.delete(`/auth/delete/${id}`),
   getCurrentUser: () => {
     const s = localStorage.getItem('autoserve_user');
     return s ? JSON.parse(s) : null;
@@ -95,6 +103,7 @@ export const invoiceService = {
 export const feedbackService = {
   getAll:       ()           => api.get('/feedback'),
   create:       (data)       => api.post('/feedback', data),
+  update:       (id, data)   => api.put(`/feedback/${id}`, data),
   updateStatus: (id, status) => api.patch(`/feedback/${id}/status`, { status }),
   delete:       (id)         => api.delete(`/feedback/${id}`),
 };
@@ -110,7 +119,10 @@ export const servicesCatalogService = {
 
 // ── Garages ───────────────────────────────────────────────
 export const garageService = {
-  getAll:      ()         => api.get('/garages'),
+  getAll:      async () => {
+    const users = await api.get('/auth/users');
+    return users.filter(u => u.role === 'Garage Owner');
+  },
   getById:     (id)       => api.get(`/garages/${id}`),
   create:      (data)     => api.post('/garages', data),
   update:      (id, data) => api.put(`/garages/${id}`, data),

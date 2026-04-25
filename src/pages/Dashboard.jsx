@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { customerService, vehicleService, bookingService, invoiceService } from '../utils/api';
+import { customerService, vehicleService, bookingService, invoiceService, feedbackService, garageService, authService } from '../utils/api';
+import ConfirmModal from '../components/ConfirmModal';
 import "../style.css";
 
 const actColor = { booking:"#c9a227", payment:"#43e97b", done:"#43e97b", customer:"#60a5fa", feedback:"#e879f9" };
@@ -15,26 +16,89 @@ const statusBadge = s => {
 
 export default function Dashboard({ user }) {
   const displayName = user?.fullName || user?.name || "Admin";
+  const isGarageOwner = user?.role === "Garage Owner";
+  const isVehicleOwner = user?.role === "Vehicle Owner" || (!isGarageOwner && user?.role !== "Admin");
   const hour  = new Date().getHours();
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
-  const [stats,    setStats]    = useState({ bookings:0, vehicles:0, customers:0, revenue:'0' });
+  const [stats,    setStats]    = useState({ bookings:0, vehicles:0, customers:0, revenue:'0', rating:'N/A' });
   const [recent,   setRecent]   = useState([]);
   const [activity, setActivity] = useState([]);
   const [loading,  setLoading]  = useState(true);
+  const [garageDetails, setGarageDetails] = useState(null);
+  const [vehicleOwnerDetails, setVehicleOwnerDetails] = useState(null);
+  
+  // Profile settings
+  const [profileModal, setProfileModal] = useState(false);
+  const [profileForm, setProfileForm]   = useState({});
+  const [confirmObj, setConfirmObj]     = useState({ isOpen: false, id: null });
+  const [successMsg, setSuccessMsg]     = useState('');
+  
+  const handleProfileChange = e => setProfileForm(f => ({ ...f, [e.target.name]: e.target.value }));
+  
+  const openEditProfile = () => {
+    setProfileForm({
+      ...user,
+      fullName: user.fullName || '', email: user.email || '', phone: user.phone || '',
+      nic: user.nic || '', address: user.address || '', drivingLicense: user.drivingLicense || '',
+      businessName: user.businessName || '', businessReg: user.businessReg || '',
+      garageAddress: user.garageAddress || '', openHours: user.openHours || '', garagePhone: user.garagePhone || ''
+    });
+    setProfileModal(true);
+  };
+  
+  const saveProfile = async () => {
+    try {
+      await authService.updateProfile(user.id, profileForm);
+      if (isGarageOwner) {
+        setGarageDetails(prev => ({ ...prev, ...profileForm }));
+      } else if (isVehicleOwner) {
+        setVehicleOwnerDetails(prev => ({ ...prev, ...profileForm }));
+      }
+      setProfileModal(false);
+      setSuccessMsg('Your details have been updated successfully!');
+    } catch(err) { alert(err.message); }
+  };
+  
+  const handleDeleteAccount = async () => {
+    try {
+      await authService.deleteProfile(user.id);
+      authService.logout();
+      window.location.reload();
+    } catch(err) { alert(err.message); }
+    finally { setConfirmObj({ isOpen: false, id: null }); }
+  };
 
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const [customers, vehicles, bookings, invoices] = await Promise.all([
-          customerService.getAll(),
-          vehicleService.getAll(),
-          bookingService.getAll(),
-          invoiceService.getAll(),
+        const [customers, vehicles, bookings, invoices, feedbacks, garages] = await Promise.all([
+          customerService.getAll().catch(()=>[]),
+          vehicleService.getAll().catch(()=>[]),
+          bookingService.getAll().catch(()=>[]),
+          invoiceService.getAll().catch(()=>[]),
+          isGarageOwner ? feedbackService.getAll().catch(()=>[]) : Promise.resolve([]),
+          isGarageOwner ? garageService.getAll().catch(()=>[]) : Promise.resolve([])
         ]);
 
-        // Stats calculate කරන්න
+        // Filter and calculate specific to Garage Owner
+        const myFeedbacks = isGarageOwner ? feedbacks.filter(f => f.garage === displayName) : [];
+        const avgRating = myFeedbacks.length ? (myFeedbacks.reduce((a,f) => a + f.rating, 0) / myFeedbacks.length).toFixed(1) : 'N/A';
+        
+        let myGarage = null;
+        if (isGarageOwner) {
+          // Garage details are stored on the user object in the database
+          myGarage = garages.find(g => (g.businessName || g.name) === displayName) || user;
+          setGarageDetails(myGarage);
+        } else if (isVehicleOwner) {
+          setVehicleOwnerDetails(user);
+        }
+
         const totalRevenue = invoices.reduce((a, inv) => a + Number(inv.paid || 0), 0);
+        const myPendingPayments = invoices.filter(i => i.customer === displayName && (i.status === 'Unpaid' || i.status === 'Partial')).length;
+        const myBookingsCount = bookings.filter(b => b.customer === displayName).length;
+        const myVehiclesCount = vehicles.filter(v => v.owner === displayName).length;
+
         setStats({
           bookings:  bookings.length,
           vehicles:  vehicles.length,
@@ -42,27 +106,38 @@ export default function Dashboard({ user }) {
           revenue:   totalRevenue >= 1000000
             ? (totalRevenue / 1000000).toFixed(1) + 'M'
             : (totalRevenue / 1000).toFixed(0) + 'K',
+          rating: avgRating,
+          myBookings: myBookingsCount,
+          myVehicles: myVehiclesCount,
+          myPendingPayments: myPendingPayments
         });
 
         // Recent bookings — latest 5
-        const sorted = [...bookings].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+        const myBookings = isVehicleOwner ? bookings.filter(b => b.customer === displayName) : bookings;
+        const sorted = [...myBookings].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
         setRecent(sorted);
 
-        // Activity feed generate කරන්න
+        // Activity feed generate
         const acts = [];
         bookings.slice(0, 2).forEach(b => acts.push({
           time: b.date, text: `New booking — ${b.customer} · ${b.service}`, type: 'booking'
         }));
-        invoices.filter(i => i.status === 'Paid').slice(0, 1).forEach(i => acts.push({
-          time: i.date, text: `Payment received — ${i.invoiceCode} · LKR ${Number(i.paid || 0).toLocaleString()}`, type: 'payment'
-        }));
+        if (!isGarageOwner) {
+          invoices.filter(i => i.status === 'Paid').slice(0, 1).forEach(i => acts.push({
+            time: i.date, text: `Payment received — ${i.invoiceCode} · LKR ${Number(i.paid || 0).toLocaleString()}`, type: 'payment'
+          }));
+          customers.slice(0, 1).forEach(c => acts.push({
+            time: c.joinDate, text: `New customer registered — ${c.fullName}`, type: 'customer'
+          }));
+        } else {
+          myFeedbacks.slice(0, 2).forEach(f => acts.push({
+            time: f.date, text: `New Feedback from ${f.customer} - ${f.rating}★`, type: 'feedback'
+          }));
+        }
         bookings.filter(b => b.status === 'Completed').slice(0, 1).forEach(b => acts.push({
           time: b.date, text: `Service completed — ${b.vehicle} · ${b.service}`, type: 'done'
         }));
-        customers.slice(0, 1).forEach(c => acts.push({
-          time: c.joinDate, text: `New customer registered — ${c.fullName}`, type: 'customer'
-        }));
-        setActivity(acts.slice(0, 5));
+        setActivity(acts.sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 5));
 
       } catch (err) {
         console.error('Dashboard load error:', err);
@@ -71,9 +146,17 @@ export default function Dashboard({ user }) {
       }
     };
     loadDashboard();
-  }, []);
+  }, [user]);
 
-  const statCards = [
+  const statCards = isGarageOwner ? [
+    { label: "Total Bookings",  value: stats.bookings,  sub: "All time",           color: "#c9a227", icon: "📅" },
+    { label: "Garage Rating",   value: stats.rating === 'N/A' ? 'No Ratings' : `${stats.rating} ★`, sub: "From customer feedback", color: "#e879f9", icon: "⭐" },
+    { label: "Active Services", value: garageDetails?.services?.length || 0, sub: "Offered services", color: "#60a5fa", icon: "🔧" }
+  ] : isVehicleOwner ? [
+    { label: "Total Bookings",  value: stats.myBookings || 0, sub: "Your bookings", color: "#c9a227", icon: "📅" },
+    { label: "Active Vehicles", value: stats.myVehicles || 0, sub: "Registered", color: "#43e97b", icon: "🚗" },
+    { label: "Pending Payments",value: stats.myPendingPayments || 0, sub: "To be paid", color: "#ff9800", icon: "⌛" },
+  ] : [
     { label: "Total Bookings",  value: stats.bookings,  sub: "All time",           color: "#c9a227", icon: "📅" },
     { label: "Active Vehicles", value: stats.vehicles,  sub: "Registered",         color: "#43e97b", icon: "🚗" },
     { label: "Customers",       value: stats.customers, sub: "Registered users",   color: "#60a5fa", icon: "👤" },
@@ -87,7 +170,15 @@ export default function Dashboard({ user }) {
       <div className="dash-banner">
         <div className="dash-banner-left">
           <div className="dash-banner-tag">🏆 Dashboard Overview</div>
-          <h1>{greet}, <span>{displayName}</span> 👋</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <h1>{greet}, <span>{displayName}</span> 👋</h1>
+            {!isGarageOwner && !isVehicleOwner && (
+              <div style={{ display: 'flex', gap: 6, marginTop: -5 }}>
+                <button className="btn btn-outline btn-xs" onClick={openEditProfile}>✏️ Edit Profile</button>
+                <button className="btn btn-danger btn-xs" onClick={() => setConfirmObj({ isOpen: true, id: user.id })}>🗑 Delete Account</button>
+              </div>
+            )}
+          </div>
           <p>Here's what's happening at your service center today.</p>
         </div>
         <div className="dash-banner-right">
@@ -163,35 +254,249 @@ export default function Dashboard({ user }) {
               </div>
             </div>
 
-            {/* Activity Feed */}
-            <div className="dash-card">
-              <div className="dash-card-head">
-                <div>
-                  <h3>Recent Activity</h3>
-                  <p>Latest events</p>
-                </div>
-                <span className="badge badge-gray">{activity.length} events</span>
-              </div>
-              <div className="dash-activity">
-                {activity.length === 0 ? (
-                  <div style={{ textAlign:'center', padding:'30px', color:'var(--text3)' }}>No activity yet</div>
-                ) : activity.map((a, i) => (
-                  <div className="dash-act-item" key={i}>
-                    <div className="dash-act-icon" style={{ background:`${actColor[a.type]}18`, color:actColor[a.type] }}>
-                      {actIcon[a.type]}
+            {/* Garage Details or Activity */}
+            {isGarageOwner ? (
+              <div className="dash-card">
+                <div className="dash-card-head">
+                  <div>
+                    <h3>Garage Details</h3>
+                    <p>Your business info</p>
+                  </div>
+                  {garageDetails && (
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <button onClick={openEditProfile} title="Edit Garage Details" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', transition: 'transform 0.2s' }} onMouseOver={e=>e.currentTarget.style.transform='scale(1.1)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>✏️</button>
+                      <button onClick={() => setConfirmObj({ isOpen: true, id: user.id })} title="Delete Garage Account" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', transition: 'transform 0.2s' }} onMouseOver={e=>e.currentTarget.style.transform='scale(1.1)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>🗑️</button>
                     </div>
-                    <div className="dash-act-body">
-                      <div className="dash-act-text">{a.text}</div>
-                      <div className="dash-act-time">{a.time}</div>
+                  )}
+                </div>
+                {garageDetails ? (
+                  <div style={{ padding: '0 20px 20px' }}>
+                    <div style={{ marginBottom: 15 }}>
+                      <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>Business Name</div>
+                      <div style={{ fontSize: '1rem', color: 'var(--text)', fontWeight: 600 }}>{garageDetails.businessName || garageDetails.name || garageDetails.fullName}</div>
+                    </div>
+                    {garageDetails.businessReg && (
+                      <div style={{ marginBottom: 15 }}>
+                        <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>Business Reg No.</div>
+                        <div style={{ fontSize: '.9rem', color: 'var(--text)' }}>{garageDetails.businessReg}</div>
+                      </div>
+                    )}
+                    <div style={{ marginBottom: 15 }}>
+                      <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>Address</div>
+                      <div style={{ fontSize: '.9rem', color: 'var(--text)' }}>{garageDetails.garageAddress || garageDetails.address || 'N/A'}</div>
+                    </div>
+                    {garageDetails.garagePhone && (
+                      <div style={{ marginBottom: 15 }}>
+                        <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>Contact Number</div>
+                        <div style={{ fontSize: '.9rem', color: 'var(--text)' }}>{garageDetails.garagePhone}</div>
+                      </div>
+                    )}
+                    {garageDetails.openHours && (
+                      <div style={{ marginBottom: 15 }}>
+                        <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>Open Hours</div>
+                        <div style={{ fontSize: '.9rem', color: 'var(--text)' }}>{garageDetails.openHours}</div>
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 5 }}>Services Offered</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {(garageDetails.services && garageDetails.services.length > 0) ? (
+                          garageDetails.services.map((s, i) => (
+                            <span key={i} className="badge badge-blue">{s}</span>
+                          ))
+                        ) : (
+                          <span style={{ fontSize: '.85rem', color: 'var(--text3)' }}>Services not specified</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                ))}
+                ) : (
+                  <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text3)' }}>
+                    Garage details not configured yet.
+                  </div>
+                )}
               </div>
-            </div>
-
+            ) : isVehicleOwner ? (
+              <div className="dash-card">
+                <div className="dash-card-head">
+                  <div>
+                    <h3>Profile Details</h3>
+                    <p>Your vehicle owner info</p>
+                  </div>
+                  {vehicleOwnerDetails && (
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <button onClick={openEditProfile} title="Edit Profile Details" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', transition: 'transform 0.2s' }} onMouseOver={e=>e.currentTarget.style.transform='scale(1.1)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>✏️</button>
+                      <button onClick={() => setConfirmObj({ isOpen: true, id: user.id })} title="Delete Account" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', transition: 'transform 0.2s' }} onMouseOver={e=>e.currentTarget.style.transform='scale(1.1)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>🗑️</button>
+                    </div>
+                  )}
+                </div>
+                {vehicleOwnerDetails ? (
+                  <div style={{ padding: '0 20px 20px' }}>
+                    <div style={{ marginBottom: 15 }}>
+                      <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>Full Name</div>
+                      <div style={{ fontSize: '.9rem', color: 'var(--text)', fontWeight: '600' }}>{vehicleOwnerDetails.fullName || vehicleOwnerDetails.username || 'N/A'}</div>
+                    </div>
+                    <div style={{ marginBottom: 15 }}>
+                      <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>Email</div>
+                      <div style={{ fontSize: '.9rem', color: 'var(--text)' }}>{vehicleOwnerDetails.email || 'N/A'}</div>
+                    </div>
+                    <div style={{ marginBottom: 15 }}>
+                      <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>Phone</div>
+                      <div style={{ fontSize: '.9rem', color: 'var(--text)' }}>{vehicleOwnerDetails.phone || 'N/A'}</div>
+                    </div>
+                    <div style={{ marginBottom: 15 }}>
+                      <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>NIC</div>
+                      <div style={{ fontSize: '.9rem', color: 'var(--text)' }}>{vehicleOwnerDetails.nic || 'N/A'}</div>
+                    </div>
+                    <div style={{ marginBottom: 15 }}>
+                      <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>Address</div>
+                      <div style={{ fontSize: '.9rem', color: 'var(--text)' }}>{vehicleOwnerDetails.address || 'N/A'}</div>
+                    </div>
+                    {vehicleOwnerDetails.drivingLicense && (
+                      <div style={{ marginBottom: 15 }}>
+                        <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase' }}>Driving License</div>
+                        <div style={{ fontSize: '.9rem', color: 'var(--text)' }}>{vehicleOwnerDetails.drivingLicense}</div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="empty-state" style={{ padding: '20px' }}>
+                    <div className="empty-icon">🚗</div>
+                    <div className="empty-text">Loading profile details...</div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="dash-card">
+                <div className="dash-card-head">
+                  <div>
+                    <h3>Recent Activity</h3>
+                    <p>Latest events</p>
+                  </div>
+                  <span className="badge badge-gray">{activity.length} events</span>
+                </div>
+                <div className="dash-activity">
+                  {activity.length === 0 ? (
+                    <div style={{ textAlign:'center', padding:'30px', color:'var(--text3)' }}>No activity yet</div>
+                  ) : activity.map((a, i) => (
+                    <div className="dash-act-item" key={i}>
+                      <div className="dash-act-icon" style={{ background:`${actColor[a.type]}18`, color:actColor[a.type] }}>
+                        {actIcon[a.type]}
+                      </div>
+                      <div className="dash-act-body">
+                        <div className="dash-act-text">{a.text}</div>
+                        <div className="dash-act-time">{a.time}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
+
+      {/* ── Edit Profile Modal ── */}
+      {profileModal && (
+        <div className="overlay" onClick={e => e.target === e.currentTarget && setProfileModal(false)}>
+          <div className="modal">
+            <div className="modal-head">
+              <div className="modal-title">✏️ Edit Profile</div>
+              <button className="modal-close" onClick={() => setProfileModal(false)}>×</button>
+            </div>
+            
+            <div className="form-row">
+              <div className="field">
+                <label>Full Name</label>
+                <input name="fullName" value={profileForm.fullName || ''} onChange={handleProfileChange} />
+              </div>
+              <div className="field">
+                <label>Email</label>
+                <input name="email" value={profileForm.email || ''} onChange={handleProfileChange} />
+              </div>
+            </div>
+            
+            <div className="form-row">
+              <div className="field">
+                <label>Phone</label>
+                <input name="phone" value={profileForm.phone || ''} onChange={handleProfileChange} />
+              </div>
+              {isGarageOwner ? (
+                <div className="field">
+                  <label>Business Name</label>
+                  <input name="businessName" value={profileForm.businessName || ''} onChange={handleProfileChange} />
+                </div>
+              ) : (
+                <div className="field">
+                  <label>NIC</label>
+                  <input name="nic" value={profileForm.nic || ''} onChange={handleProfileChange} />
+                </div>
+              )}
+            </div>
+
+            {isGarageOwner ? (
+              <>
+                <div className="form-row">
+                  <div className="field">
+                    <label>Business Reg No.</label>
+                    <input name="businessReg" value={profileForm.businessReg || ''} onChange={handleProfileChange} />
+                  </div>
+                  <div className="field">
+                    <label>Garage Phone</label>
+                    <input name="garagePhone" value={profileForm.garagePhone || ''} onChange={handleProfileChange} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="field" style={{ flex: 2 }}>
+                    <label>Garage Address</label>
+                    <input name="garageAddress" value={profileForm.garageAddress || ''} onChange={handleProfileChange} />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Open Hours</label>
+                    <input name="openHours" value={profileForm.openHours || ''} onChange={handleProfileChange} placeholder="e.g. 8AM - 6PM" />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="form-row">
+                <div className="field">
+                  <label>Home Address</label>
+                  <input name="address" value={profileForm.address || ''} onChange={handleProfileChange} />
+                </div>
+                <div className="field">
+                  <label>Driving License</label>
+                  <input name="drivingLicense" value={profileForm.drivingLicense || ''} onChange={handleProfileChange} />
+                </div>
+              </div>
+            )}
+
+            <div className="modal-foot">
+              <button className="btn btn-outline" onClick={() => setProfileModal(false)}>Cancel</button>
+              <button className="btn btn-accent" onClick={saveProfile}>Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Success Message Modal ── */}
+      {successMsg && (
+        <div className="overlay" style={{ zIndex: 9999 }}>
+          <div className="modal" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
+            <div style={{ fontSize: '3.5rem', marginBottom: '15px' }}>✅</div>
+            <h3 style={{ marginBottom: '10px', fontSize: '1.4rem' }}>Success!</h3>
+            <p style={{ color: 'var(--text2)', marginBottom: '25px', lineHeight: '1.5' }}>{successMsg}</p>
+            <button className="btn btn-accent" style={{ width: '100%', padding: '12px' }} onClick={() => setSuccessMsg("")}>Okay</button>
+          </div>
+        </div>
+      )}
+      
+      <ConfirmModal
+        isOpen={confirmObj.isOpen}
+        title="Delete Account"
+        message="Are you absolutely sure you want to permanently delete your account? This action cannot be undone and all your data will be cleared."
+        onConfirm={handleDeleteAccount}
+        onCancel={() => setConfirmObj({ isOpen: false, id: null })}
+      />
     </div>
   );
 }

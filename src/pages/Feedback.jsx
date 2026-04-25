@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import ExportBtn from '../components/Exportbtn';
 import { feedbackService, customerService, garageService, servicesCatalogService } from '../utils/api';
+import ConfirmModal from '../components/ConfirmModal';
 import "../style.css";
 
 // ── Mock data fallback 
@@ -52,7 +53,11 @@ const RatingBar = ({ label, count, total, color }) => {
   );
 };
 
-export default function Feedback() {
+export default function Feedback({ user }) {
+  const displayName = user?.fullName || user?.name || "Admin";
+  const isGarageOwner = user?.role === "Garage Owner";
+  const isVehicleOwner = user?.role === "Vehicle Owner" || (!isGarageOwner && user?.role !== "Admin");
+  const canEscalate = user?.role === "Admin";
   const [data,           setData]          = useState([]);
   const [customers,      setCustomers]     = useState(MOCK_CUSTOMERS);
   const [garages,        setGarages]       = useState(MOCK_GARAGES);
@@ -65,9 +70,11 @@ export default function Feedback() {
   const [replyModal,     setReplyModal]    = useState(null);
   const [replyText,      setReplyText]     = useState('');
   const [form,           setForm]          = useState(EMPTY);
+  const [editId,         setEditId]        = useState(null);
   const [errors,         setErrors]        = useState({});
   const [toast,          setToast]         = useState('');
   const [loading,        setLoading]       = useState(false);
+  const [confirmObj,     setConfirmObj]    = useState({ isOpen: false, id: null });
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 2500); };
   const h = e => {
@@ -79,7 +86,12 @@ export default function Feedback() {
     setLoading(true);
     try {
       // Feedback 
-      const f = await feedbackService.getAll();
+      let f = await feedbackService.getAll();
+      if (isGarageOwner) {
+        f = f.filter(x => x.garage === displayName);
+      } else if (isVehicleOwner) {
+        f = f.filter(x => x.status === 'Approved' || x.customer === displayName);
+      }
       setData(f);
     } catch (err) { console.error('Feedback load error:', err); }
 
@@ -91,9 +103,16 @@ export default function Feedback() {
 
     // Garages 
     try {
-      const g = await garageService.getAll();
+      let g = await garageService.getAll();
+      if (isGarageOwner) {
+        g = g.filter(x => (x.businessName || x.name) === displayName);
+      }
       if (g && g.length > 0) setGarages(g);
-    } catch { /* mock data already set */ }
+    } catch { 
+      if (isGarageOwner) {
+        setGarages(MOCK_GARAGES.filter(x => (x.businessName || x.name) === displayName));
+      }
+    }
 
     setLoading(false);
   }, []);
@@ -104,7 +123,7 @@ export default function Feedback() {
   const handleGarageChange = async e => {
     const garageId = e.target.value;
     const found = garages.find(g => String(g.id) === String(garageId));
-    const garageName = found?.businessName || found?.name || '';
+    const garageName = found?.businessName || found?.name || found?.fullName || '';
     setForm(f => ({ ...f, garageId, garage: garageName, service: '' }));
     setErrors(err => ({ ...err, garage:'' }));
 
@@ -144,20 +163,40 @@ export default function Feedback() {
     return matchSearch && matchStatus && matchRating;
   });
 
-  const avgRating = data.length
-    ? (data.reduce((a, f) => a + f.rating, 0) / data.length).toFixed(1)
+  const myStatsData = isVehicleOwner ? data.filter(f => f.customer === displayName) : data;
+
+  const avgRating = myStatsData.length
+    ? (myStatsData.reduce((a, f) => a + f.rating, 0) / myStatsData.length).toFixed(1)
     : '0.0';
 
   const ratingDist = [5,4,3,2,1].map(n => ({
     n,
-    count: data.filter(f => f.rating === n).length,
+    count: myStatsData.filter(f => f.rating === n).length,
     color: n >= 4 ? 'var(--green)' : n === 3 ? 'var(--amber)' : 'var(--red)',
   }));
 
   const openAdd = () => {
-    setForm({ ...EMPTY, date: new Date().toISOString().slice(0,10) });
+    setForm({ ...EMPTY, customer: isVehicleOwner ? displayName : EMPTY.customer, date: new Date().toISOString().slice(0,10) });
     setGarageServices([]);
     setErrors({});
+    setEditId(null);
+    setModal(true);
+  };
+
+  const openEdit = (f) => {
+    const garageFound = garages.find(g => (g.businessName || g.name || g.fullName) === f.garage);
+    setForm({ 
+      customer: f.customer,
+      garageId: garageFound?.id || '',
+      garage: f.garage,
+      service: f.service || '',
+      rating: f.rating,
+      comment: f.comment,
+      date: f.date
+    });
+    setGarageServices(garageFound?.services ? garageFound.services.map((s,i)=>({id:i, name:s})) : []);
+    setErrors({});
+    setEditId(f.id);
     setModal(true);
   };
 
@@ -166,10 +205,26 @@ export default function Feedback() {
     if (!form.customer) e.customer = 'Please select a customer.';
     if (!form.garage)   e.garage   = 'Please select a garage.';
     if (!form.comment)  e.comment  = 'Comment is required.';
+    
+    if (form.date) {
+      const selected = new Date(form.date);
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      selected.setHours(0,0,0,0);
+      if (selected > today) {
+        e.date = 'Date cannot be in the future.';
+      }
+    }
+
     if (Object.keys(e).length) { setErrors(e); return; }
     try {
-      await feedbackService.create({ ...form, rating: Number(form.rating) });
-      showToast('✅ Feedback submitted');
+      if (editId) {
+        await feedbackService.update(editId, { ...form, rating: Number(form.rating) });
+        showToast('✅ Feedback updated');
+      } else {
+        await feedbackService.create({ ...form, rating: Number(form.rating) });
+        showToast('✅ Feedback submitted');
+      }
       setModal(false);
       loadAll();
     } catch (err) { alert(err.message); }
@@ -177,10 +232,15 @@ export default function Feedback() {
 
   const approve  = async id => { try { await feedbackService.updateStatus(id,'Approved');  showToast('✅ Approved');  loadAll(); } catch(err){ alert(err.message); }};
   const escalate = async id => { try { await feedbackService.updateStatus(id,'Escalated'); showToast('⚠️ Escalated'); loadAll(); } catch(err){ alert(err.message); }};
-  const remove   = async id => {
-    if (!confirm('Delete this feedback?')) return;
-    try { await feedbackService.delete(id); showToast('🗑 Deleted'); loadAll(); }
-    catch(err){ alert(err.message); }
+  const remove   = id => { setConfirmObj({ isOpen: true, id }); };
+
+  const handleConfirmRemove = async () => {
+    try { 
+      await feedbackService.delete(confirmObj.id); 
+      showToast('🗑 Deleted'); 
+      loadAll(); 
+    } catch(err) { alert(err.message); }
+    finally { setConfirmObj({ isOpen: false, id: null }); }
   };
 
   const submitReply = async () => {
@@ -212,17 +272,17 @@ export default function Feedback() {
         </div>
         <div className="page-actions">
           <ExportBtn data={exportData} filename="feedback-export" title="Feedback Report" />
-          <button className="btn btn-accent" onClick={openAdd}>＋ New Feedback</button>
+          {!isGarageOwner && <button className="btn btn-accent" onClick={openAdd}>＋ New Feedback</button>}
         </div>
       </div>
 
       {/* ── Stat Cards ── */}
       <div className="stats-row stats-4">
         {[
-          { icon:'💬', label:'Total Reviews', val: data.length,                                    color:'sc-blue'   },
+          { icon:'💬', label: isVehicleOwner ? 'My Reviews' : 'Total Reviews', val: myStatsData.length, color:'sc-blue'   },
           { icon:'⭐', label:'Avg Rating',     val: `${avgRating} ★`,                             color:'sc-gold'   },
-          { icon:'✅', label:'Approved',       val: data.filter(f=>f.status==='Approved').length,  color:'sc-green'  },
-          { icon:'⚠️', label:'Escalated',      val: data.filter(f=>f.status==='Escalated').length, color:'sc-red'    },
+          { icon:'✅', label:'Approved',       val: myStatsData.filter(f=>f.status==='Approved').length,  color:'sc-green'  },
+          ...(canEscalate ? [{ icon:'⚠️', label:'Escalated',      val: myStatsData.filter(f=>f.status==='Escalated').length, color:'sc-red'    }] : []),
         ].map(s => (
           <div key={s.label} className={`stat-card ${s.color}`}>
             <span className="stat-icon">{s.icon}</span>
@@ -243,7 +303,7 @@ export default function Feedback() {
             </div>
           </div>
           {ratingDist.map(r => (
-            <RatingBar key={r.n} label={r.n} count={r.count} total={data.length} color={r.color} />
+            <RatingBar key={r.n} label={r.n} count={r.count} total={myStatsData.length} color={r.color} />
           ))}
         </div>
 
@@ -253,7 +313,8 @@ export default function Feedback() {
           </div>
           {garages.map(g => {
             const gName = g.businessName || g.name || '';
-            const gData = data.filter(f => f.garage === gName);
+            const gData = myStatsData.filter(f => f.garage === gName);
+            if (!gData.length && isVehicleOwner) return null;
             if (!gData.length) return (
               <div key={g.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
                 <div>
@@ -293,7 +354,10 @@ export default function Feedback() {
               {[5,4,3,2,1].map(n => <option key={n} value={n}>{n} ★</option>)}
             </select>
             <select className="filt-select" value={statusFilt} onChange={e => setStatusFilt(e.target.value)}>
-              {['All','Pending','Approved','Escalated'].map(s => <option key={s}>{s}</option>)}
+              <option>All</option>
+              <option>Pending</option>
+              <option>Approved</option>
+              {canEscalate && <option>Escalated</option>}
             </select>
           </div>
         </div>
@@ -332,13 +396,24 @@ export default function Feedback() {
                     <td><span className={`badge ${STATUS_CLASS[f.status]||'bg-muted'}`}>{f.status}</span></td>
                     <td>
                       <div style={{ display:'flex', gap:5 }}>
-                        <button className="btn btn-blue btn-xs"    onClick={() => setViewModal(f)}>👁</button>
-                        <button className="btn btn-outline btn-xs" onClick={() => { setReplyModal(f); setReplyText(''); }}>💬</button>
-                        {f.status === 'Pending' && <>
+                        <button className="btn btn-blue btn-xs" onClick={() => setViewModal(f)}>👁</button>
+                        
+                        {!isVehicleOwner && (
+                          <button className="btn btn-outline btn-xs" onClick={() => { setReplyModal(f); setReplyText(''); }}>💬</button>
+                        )}
+                        
+                        {(isVehicleOwner && f.customer === displayName) && (
+                          <button className="btn btn-outline btn-xs" onClick={() => openEdit(f)}>✏️</button>
+                        )}
+
+                        {f.status === 'Pending' && !isVehicleOwner && <>
                           <button className="btn btn-outline btn-xs" onClick={() => approve(f.id)}>✓</button>
-                          <button className="btn btn-danger btn-xs"  onClick={() => escalate(f.id)}>↑</button>
+                          {canEscalate && <button className="btn btn-danger btn-xs" onClick={() => escalate(f.id)}>↑</button>}
                         </>}
-                        <button className="btn btn-danger btn-xs" onClick={() => remove(f.id)}>🗑</button>
+
+                        {(canEscalate || isGarageOwner || (isVehicleOwner && f.customer === displayName)) && (
+                          <button className="btn btn-danger btn-xs" onClick={() => remove(f.id)}>🗑</button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -366,15 +441,23 @@ export default function Feedback() {
               {/* Customer Dropdown */}
               <div className="field">
                 <label>Customer *</label>
-                <select name="customer" value={form.customer} onChange={h}>
-                  <option value="">— Select customer —</option>
-                  {customers.map(c => (
-                    <option key={c.id} value={c.fullName}>
-                      {c.fullName}{c.phone ? ` · ${c.phone}` : ''}
-                    </option>
-                  ))}
-                </select>
-                {errors.customer && <span style={{ color:'var(--red)', fontSize:'.78rem' }}>{errors.customer}</span>}
+                {isVehicleOwner ? (
+                  <div style={{ background:'var(--surface2)', padding:'8px 12px', borderRadius:6, color:'var(--text2)', border:'1px solid var(--border)' }}>
+                    {displayName}
+                  </div>
+                ) : (
+                  <>
+                    <select name="customer" value={form.customer} onChange={h}>
+                      <option value="">— Select customer —</option>
+                      {customers.map(c => (
+                        <option key={c.id} value={c.fullName}>
+                          {c.fullName}{c.phone ? ` · ${c.phone}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.customer && <span style={{ color:'var(--red)', fontSize:'.78rem' }}>{errors.customer}</span>}
+                  </>
+                )}
               </div>
 
               {/* Garage Dropdown */}
@@ -384,7 +467,7 @@ export default function Feedback() {
                   <option value="">— Select garage —</option>
                   {garages.map(g => (
                     <option key={g.id} value={g.id}>
-                      {g.businessName || g.name} {g.garageAddress ? `· ${g.garageAddress}` : ''}
+                      {g.businessName || g.name || g.fullName || 'Unnamed Garage'} {g.garageAddress ? `· ${g.garageAddress}` : ''}
                     </option>
                   ))}
                 </select>
@@ -393,16 +476,16 @@ export default function Feedback() {
             </div>
 
             {/* Garage Services */}
-            {form.garageId && garageServices.length > 0 && (
+            {form.garageId && (
               <div className="field">
-                <label>Service</label>
-                <select name="service" value={form.service} onChange={h}>
-                  <option value="">— Select service —</option>
+                <label>Service (Optional)</label>
+                <input name="service" value={form.service} onChange={h} placeholder="Type service name or select (optional)" list="service-options" />
+                <datalist id="service-options">
                   {garageServices.map((s, i) => {
                     const label = s.name || s.serviceName || s.title || s;
                     return <option key={s.id || i} value={label}>{label}</option>;
                   })}
-                </select>
+                </datalist>
               </div>
             )}
 
@@ -415,7 +498,8 @@ export default function Feedback() {
             {/* Date */}
             <div className="field">
               <label>Date</label>
-              <input name="date" type="date" value={form.date} onChange={h} />
+              <input name="date" type="date" max={new Date().toISOString().slice(0, 10)} value={form.date} onChange={h} />
+              {errors.date && <span style={{ color:'var(--red)', fontSize:'.78rem' }}>{errors.date}</span>}
             </div>
 
             {/* Comment */}
@@ -526,6 +610,13 @@ export default function Feedback() {
       )}
 
       {toast && <div className="toast-stack"><div className="toast toast-success">{toast}</div></div>}
+      <ConfirmModal
+        isOpen={confirmObj.isOpen}
+        title="Delete Feedback"
+        message="Are you sure you want to delete this feedback? This action cannot be undone."
+        onConfirm={handleConfirmRemove}
+        onCancel={() => setConfirmObj({ isOpen: false, id: null })}
+      />
     </div>
   );
 }

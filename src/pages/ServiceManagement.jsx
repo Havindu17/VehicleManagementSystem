@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import ExportBtn from '../components/Exportbtn';
 import { servicesCatalogService, vehicleService } from '../utils/api';
+import ConfirmModal from '../components/ConfirmModal';
 import "../style.css";
 
 const STAGES  = ['Vehicle Received','In Service','Quality Check','Ready for Pickup'];
@@ -387,6 +388,7 @@ export default function Services() {
   const [editId,    setEditId]   = useState(null);
   const [toast,     setToast]    = useState('');
   const [loading,   setLoading]  = useState(false);
+  const [confirmObj,setConfirmObj] = useState({ isOpen: false, id: null });
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 2500); };
   const h = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
@@ -504,10 +506,20 @@ export default function Services() {
     } catch (err) { alert(err.message); }
   };
 
-  const del = async id => {
-    if (!confirm('Remove service?')) return;
-    try { await servicesCatalogService.delete(id); showToast('🗑 Removed'); loadAll(); }
-    catch (err) { alert(err.message); }
+  const del = id => {
+    setConfirmObj({ isOpen: true, id });
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      await servicesCatalogService.delete(confirmObj.id);
+      showToast('🗑 Removed');
+      loadAll();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setConfirmObj({ isOpen: false, id: null });
+    }
   };
 
   const advanceStage = jobId => {
@@ -969,6 +981,13 @@ export default function Services() {
       )}
 
       {toast && <div className="toast-stack"><div className="toast toast-success">{toast}</div></div>}
+      <ConfirmModal
+        isOpen={confirmObj.isOpen}
+        title="Remove Service"
+        message="Are you sure you want to remove this service? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmObj({ isOpen: false, id: null })}
+      />
     </div>
   );
 }

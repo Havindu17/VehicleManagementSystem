@@ -1,6 +1,7 @@
 import { customerService } from '../utils/api';
 import { useState, useEffect, useCallback } from 'react';
 import ExportBtn from '../components/Exportbtn';
+import ConfirmModal from '../components/ConfirmModal';
 import "../style.css";
 
 const ROLE_CLASS = { 'Vehicle Owner': 'bg-blue', 'Garage Owner': 'bg-purple', 'Admin': 'bg-gold' };
@@ -47,6 +48,7 @@ export default function CustomerManagement() {
   const [toast,      setToast]      = useState('');
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
+  const [confirmObj, setConfirmObj] = useState({ isOpen: false, id: null });
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 2500); };
 
@@ -133,13 +135,17 @@ export default function CustomerManagement() {
     } catch (err) { alert(err.message); }
   };
 
-  const del = async id => {
-    if (!confirm('Delete this customer?')) return;
+  const del = id => {
+    setConfirmObj({ isOpen: true, id });
+  };
+
+  const handleConfirmDelete = async () => {
     try {
-      await customerService.delete(id);
+      await customerService.delete(confirmObj.id);
       showToast('🗑 Deleted');
       loadCustomers();
     } catch (err) { alert(err.message); }
+    finally { setConfirmObj({ isOpen: false, id: null }); }
   };
 
   const avgRating = feedback.length
@@ -453,6 +459,13 @@ export default function CustomerManagement() {
       )}
 
       {toast && <div className="toast-stack"><div className="toast toast-success">{toast}</div></div>}
+      <ConfirmModal
+        isOpen={confirmObj.isOpen}
+        title="Delete Customer"
+        message="Are you sure you want to delete this customer? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmObj({ isOpen: false, id: null })}
+      />
     </div>
   );
 }
