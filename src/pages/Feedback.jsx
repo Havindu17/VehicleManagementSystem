@@ -82,15 +82,31 @@ export default function Feedback({ user }) {
     setErrors(err => ({ ...err, [e.target.name]:'' }));
   };
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const isMyFeedback = (f) => {
+    if (!f || !f.customer) return false;
+    const c = String(f.customer).toLowerCase().trim();
+    const d = String(displayName || '').toLowerCase().trim();
+    const u = String(user?.username || '').toLowerCase().trim();
+    return c === d || c === u;
+  };
+
+  const isMyGarageFeedback = (f) => {
+    if (!f || !f.garage) return false;
+    const g = String(f.garage).toLowerCase().trim();
+    const bn = String(user?.businessName || '').toLowerCase().trim();
+    const dn = String(displayName || '').toLowerCase().trim();
+    return g === bn || g === dn;
+  };
+
+  const loadAll = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       // Feedback 
       let f = await feedbackService.getAll();
       if (isGarageOwner) {
-        f = f.filter(x => x.garage === displayName);
+        f = f.filter(isMyGarageFeedback);
       } else if (isVehicleOwner) {
-        f = f.filter(x => x.status === 'Approved' || x.customer === displayName);
+        f = f.filter(x => x.status === 'Approved' || isMyFeedback(x));
       }
       setData(f);
     } catch (err) { console.error('Feedback load error:', err); }
@@ -114,10 +130,19 @@ export default function Feedback({ user }) {
       }
     }
 
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, []);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => { 
+    loadAll(); 
+    
+    // Background polling for real-time updates every 5 seconds
+    const intervalId = setInterval(() => {
+      loadAll(true);
+    }, 5000);
+    
+    return () => clearInterval(intervalId);
+  }, [loadAll]);
 
   // Garage 
   const handleGarageChange = async e => {
@@ -163,7 +188,7 @@ export default function Feedback({ user }) {
     return matchSearch && matchStatus && matchRating;
   });
 
-  const myStatsData = isVehicleOwner ? data.filter(f => f.customer === displayName) : data;
+  const myStatsData = isVehicleOwner ? data.filter(isMyFeedback) : data;
 
   const avgRating = myStatsData.length
     ? (myStatsData.reduce((a, f) => a + f.rating, 0) / myStatsData.length).toFixed(1)
@@ -307,38 +332,60 @@ export default function Feedback({ user }) {
           ))}
         </div>
 
-        <div className="dash-card">
-          <div className="dash-card-head">
-            <div><h3>🏪 Garage Ratings</h3><p>Average ratings per garage</p></div>
+        {isGarageOwner ? (
+          <div className="dash-card">
+            <div className="dash-card-head">
+              <div><h3>💬 Latest Feedback</h3><p>Most recent customer review</p></div>
+            </div>
+            <div style={{ padding: '20px 0', textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              {(() => {
+                const latest = myStatsData.length ? [...myStatsData].sort((a,b) => b.id - a.id)[0] : null;
+                if (!latest) return <div style={{ color: 'var(--text3)' }}>No feedback received yet.</div>;
+                return (
+                  <div>
+                    <div style={{ fontSize: '1.2rem', color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>{latest.customer}</div>
+                    <div style={{ fontSize: '1.1rem', color: '#ffc83c', marginBottom: 12, letterSpacing: 2 }}>{'★'.repeat(latest.rating)}{'☆'.repeat(5-latest.rating)}</div>
+                    <div style={{ fontSize: '.95rem', color: 'var(--text2)', fontStyle: 'italic', lineHeight: 1.5, padding: '0 20px' }}>"{latest.comment}"</div>
+                    <div style={{ fontSize: '.75rem', color: 'var(--text3)', marginTop: 15 }}>{latest.date} • {latest.service}</div>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
-          {garages.map(g => {
-            const gName = g.businessName || g.name || '';
-            const gData = myStatsData.filter(f => f.garage === gName);
-            if (!gData.length && isVehicleOwner) return null;
-            if (!gData.length) return (
-              <div key={g.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize:'.84rem', color:'var(--text2)', fontWeight:600 }}>{gName}</div>
-                  <div style={{ fontSize:'.72rem', color:'var(--text3)' }}>{g.garageAddress || ''}</div>
+        ) : (
+          <div className="dash-card">
+            <div className="dash-card-head">
+              <div><h3>🏪 Garage Ratings</h3><p>Average ratings per garage</p></div>
+            </div>
+            {garages.map(g => {
+              const gName = g.businessName || g.name || '';
+              const gData = myStatsData.filter(f => f.garage === gName);
+              if (!gData.length && isVehicleOwner) return null;
+              if (!gData.length) return (
+                <div key={g.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+                  <div>
+                    <div style={{ fontSize:'.84rem', color:'var(--text2)', fontWeight:600 }}>{gName}</div>
+                    <div style={{ fontSize:'.72rem', color:'var(--text3)' }}>{g.garageAddress || ''}</div>
+                  </div>
+                  <span style={{ fontSize:'.75rem', color:'var(--text3)' }}>No reviews</span>
                 </div>
-                <span style={{ fontSize:'.75rem', color:'var(--text3)' }}>No reviews</span>
-              </div>
-            );
-            const avg = (gData.reduce((a,f) => a + f.rating, 0) / gData.length).toFixed(1);
-            return (
-              <div key={g.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize:'.84rem', color:'var(--text2)', fontWeight:600 }}>{gName}</div>
-                  <div style={{ fontSize:'.72rem', color:'var(--text3)' }}>{g.garageAddress || ''}</div>
+              );
+              const avg = (gData.reduce((a,f) => a + f.rating, 0) / gData.length).toFixed(1);
+              return (
+                <div key={g.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+                  <div>
+                    <div style={{ fontSize:'.84rem', color:'var(--text2)', fontWeight:600 }}>{gName}</div>
+                    <div style={{ fontSize:'.72rem', color:'var(--text3)' }}>{g.garageAddress || ''}</div>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:'.75rem', color:'var(--text3)' }}>{gData.length} reviews</span>
+                    <span style={{ fontSize:'.82rem', color:'#ffc83c', fontWeight:700 }}>★ {avg}</span>
+                  </div>
                 </div>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <span style={{ fontSize:'.75rem', color:'var(--text3)' }}>{gData.length} reviews</span>
-                  <span style={{ fontSize:'.82rem', color:'#ffc83c', fontWeight:700 }}>★ {avg}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── Table ── */}
@@ -402,7 +449,7 @@ export default function Feedback({ user }) {
                           <button className="btn btn-outline btn-xs" onClick={() => { setReplyModal(f); setReplyText(''); }}>💬</button>
                         )}
                         
-                        {(isVehicleOwner && f.customer === displayName) && (
+                        {(isVehicleOwner && isMyFeedback(f)) && (
                           <button className="btn btn-outline btn-xs" onClick={() => openEdit(f)}>✏️</button>
                         )}
 
@@ -411,7 +458,7 @@ export default function Feedback({ user }) {
                           {canEscalate && <button className="btn btn-danger btn-xs" onClick={() => escalate(f.id)}>↑</button>}
                         </>}
 
-                        {(canEscalate || isGarageOwner || (isVehicleOwner && f.customer === displayName)) && (
+                        {(canEscalate || isGarageOwner || (isVehicleOwner && isMyFeedback(f))) && (
                           <button className="btn btn-danger btn-xs" onClick={() => remove(f.id)}>🗑</button>
                         )}
                       </div>

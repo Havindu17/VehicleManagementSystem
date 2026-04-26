@@ -12,6 +12,7 @@ import ServiceManagement  from "./pages/ServiceManagement";
 import InvoicePayment     from "./pages/InvoicePayment";
 import Feedback           from "./pages/Feedback";
 import Profiles           from "./pages/Profiles";   // ← NEW
+import PublicFeedback     from "./pages/PublicFeedback";
 
 import "./style.css";
 
@@ -34,6 +35,15 @@ export default function App() {
   const handleLogin    = (userData) => { setUser(userData); setActivePage("dashboard"); };
   const handleRegister = (userData) => { setUser(null); setAuthPage("login"); };
   const handleLogout   = () => { authService.logout(); setUser(null); setAuthPage("landing"); };
+
+  const href = window.location.href;
+  const isPublicFeedback = href.includes('page=public-feedback');
+  let feedbackGarage = 'Our Garage';
+  if (isPublicFeedback) {
+    const match = href.match(/garage=([^&]+)/);
+    if (match) feedbackGarage = decodeURIComponent(match[1]);
+    return <PublicFeedback garageName={feedbackGarage} />;
+  }
 
   if (!user) {
     if (authPage === "landing") {

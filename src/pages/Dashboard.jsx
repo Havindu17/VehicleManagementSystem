@@ -70,8 +70,9 @@ export default function Dashboard({ user }) {
   };
 
   useEffect(() => {
-    const loadDashboard = async () => {
+    const loadDashboard = async (silent = false) => {
       try {
+        if (!silent) setLoading(true);
         const [customers, vehicles, bookings, invoices, feedbacks, garages] = await Promise.all([
           customerService.getAll().catch(()=>[]),
           vehicleService.getAll().catch(()=>[]),
@@ -82,8 +83,10 @@ export default function Dashboard({ user }) {
         ]);
 
         // Filter and calculate specific to Garage Owner
-        const myFeedbacks = isGarageOwner ? feedbacks.filter(f => f.garage === displayName) : [];
+        const garageNameMatch = user?.businessName || displayName;
+        const myFeedbacks = isGarageOwner ? feedbacks.filter(f => f.garage === garageNameMatch || f.garage === displayName) : [];
         const avgRating = myFeedbacks.length ? (myFeedbacks.reduce((a,f) => a + f.rating, 0) / myFeedbacks.length).toFixed(1) : 'N/A';
+        const latestFeedback = myFeedbacks.length ? [...myFeedbacks].sort((a,b) => b.id - a.id)[0] : null;
         
         let myGarage = null;
         if (isGarageOwner) {
@@ -107,6 +110,8 @@ export default function Dashboard({ user }) {
             ? (totalRevenue / 1000000).toFixed(1) + 'M'
             : (totalRevenue / 1000).toFixed(0) + 'K',
           rating: avgRating,
+          latestFeedback: latestFeedback,
+          myFeedbacksCount: myFeedbacks.length,
           myBookings: myBookingsCount,
           myVehicles: myVehiclesCount,
           myPendingPayments: myPendingPayments
@@ -142,15 +147,23 @@ export default function Dashboard({ user }) {
       } catch (err) {
         console.error('Dashboard load error:', err);
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     };
+    
     loadDashboard();
+    
+    // Background polling for real-time updates every 5 seconds
+    const intervalId = setInterval(() => {
+      loadDashboard(true);
+    }, 5000);
+    
+    return () => clearInterval(intervalId);
   }, [user]);
 
   const statCards = isGarageOwner ? [
     { label: "Total Bookings",  value: stats.bookings,  sub: "All time",           color: "#c9a227", icon: "📅" },
-    { label: "Garage Rating",   value: stats.rating === 'N/A' ? 'No Ratings' : `${stats.rating} ★`, sub: "From customer feedback", color: "#e879f9", icon: "⭐" },
+    { label: "Total Feedbacks", value: stats.myFeedbacksCount || 0, sub: "Customer reviews", color: "#e879f9", icon: "💬" },
     { label: "Active Services", value: garageDetails?.services?.length || 0, sub: "Offered services", color: "#60a5fa", icon: "🔧" }
   ] : isVehicleOwner ? [
     { label: "Total Bookings",  value: stats.myBookings || 0, sub: "Your bookings", color: "#c9a227", icon: "📅" },
@@ -292,17 +305,36 @@ export default function Dashboard({ user }) {
                         <div style={{ fontSize: '.9rem', color: 'var(--text)' }}>{garageDetails.openHours}</div>
                       </div>
                     )}
-                    <div>
-                      <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 5 }}>Services Offered</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {(garageDetails.services && garageDetails.services.length > 0) ? (
-                          garageDetails.services.map((s, i) => (
-                            <span key={i} className="badge badge-blue">{s}</span>
-                          ))
-                        ) : (
-                          <span style={{ fontSize: '.85rem', color: 'var(--text3)' }}>Services not specified</span>
-                        )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 15, paddingTop: 15, borderTop: '1px solid var(--border)' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '.8rem', color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 5 }}>Services Offered</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {(garageDetails.services && garageDetails.services.length > 0) ? (
+                            garageDetails.services.map((s, i) => (
+                              <span key={i} className="badge badge-blue">{s}</span>
+                            ))
+                          ) : (
+                            <span style={{ fontSize: '.85rem', color: 'var(--text3)' }}>Services not specified</span>
+                          )}
+                        </div>
                       </div>
+                    </div>
+                    
+                    <div style={{ marginTop: 25, paddingTop: 20, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
+                      <div style={{ fontSize: '.85rem', color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 10, letterSpacing: '0.05em', fontWeight: 'bold' }}>Your Public Feedback QR Code</div>
+                      <div style={{ background: '#fff', padding: 10, borderRadius: 8, display: 'inline-block', border: '1px solid var(--border)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.origin}/?page=public-feedback&garage=${encodeURIComponent(garageDetails.businessName || garageDetails.name || garageDetails.fullName || displayName)}`)}`} 
+                          alt="Feedback QR Code" 
+                          style={{ display: 'block', width: 130, height: 130 }} 
+                        />
+                      </div>
+                      <div style={{ fontSize: '.75rem', color: 'var(--text2)', marginTop: 10 }}>Print this or display it on a tablet for your customers to scan.</div>
+                      {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+                        <div style={{ fontSize: '.7rem', color: 'var(--red)', marginTop: 8, lineHeight: 1.3, background: 'rgba(239,68,68,0.1)', padding: 6, borderRadius: 6, display: 'inline-block' }}>
+                          ⚠️ Access via your Wi-Fi IP (192.168...) for the QR to work on mobile.
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (

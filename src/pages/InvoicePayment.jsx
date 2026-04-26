@@ -6,12 +6,17 @@ import "../style.css";
 
 const ALL_STATUS = ['Pending', 'Partial', 'Paid', 'Overdue'];
 const STATUS_C   = { Paid:'bg-green', Pending:'bg-orange', Partial:'bg-blue', Overdue:'bg-red' };
+const today = new Date();
+const next14 = new Date(today);
+next14.setDate(today.getDate() + 14);
+
 const EMPTY_INV  = {
   bookingId:'', bookingCode:'',
   customer:'', customerPhone:'',
   vehicle:'', plate:'', service:'',
-  date: new Date().toISOString().slice(0,10),
-  dueDate:'', total:'', paid:'0',
+  date: today.toISOString().slice(0,10),
+  dueDate: next14.toISOString().slice(0,10),
+  total:'', paid:'0',
   status:'Pending', notes:'',
 };
 
@@ -37,16 +42,37 @@ export default function InvoicePayment({ user }) {
   const [bookingSearch, setBookingSearch] = useState('');
   const [confirmObj,    setConfirmObj]    = useState({ isOpen: false, id: null });
   const [payModal,      setPayModal]      = useState(null);
-  const [payForm,       setPayForm]       = useState({ amount: '', method: 'Card', slipBase64: '' });
+  const [payForm,       setPayForm]       = useState({ amount: '', method: 'Card', slipBase64: '', cardNumber: '', cardExpiry: '', cardCvv: '', cardName: '' });
   const [successMsg,    setSuccessMsg]    = useState('');
   const [errorMsg,      setErrorMsg]      = useState('');
 
+  const checkExpiry = (exp) => {
+    if (!/^\d{2}\/\d{2}$/.test(exp)) return false;
+    const [m, y] = exp.split('/');
+    const month = parseInt(m, 10);
+    const year = parseInt('20' + y, 10);
+    const now = new Date();
+    if (month < 1 || month > 12) return false;
+    if (year < now.getFullYear()) return false;
+    if (year === now.getFullYear() && month < (now.getMonth() + 1)) return false;
+    return true;
+  };
+
   const showToast = msg => { setToast(msg); setTimeout(()=>setToast(''),2500); };
-  const h = e => setForm(f=>({...f,[e.target.name]:e.target.value}));
+  const h = e => {
+    const { name, value } = e.target;
+    let updates = { [name]: value };
+    if (name === 'date' && value) {
+      const dateObj = new Date(value);
+      dateObj.setDate(dateObj.getDate() + 14);
+      updates.dueDate = dateObj.toISOString().slice(0, 10);
+    }
+    setForm(f => ({ ...f, ...updates }));
+  };
 
   // ── Load ──────────────────────────────────────────────────────────────────
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [inv, bk, veh] = await Promise.all([
         invoiceService.getAll(),
@@ -82,10 +108,16 @@ export default function InvoicePayment({ user }) {
       setBookings(bk.filter(b=>['Approved','In Progress','Completed'].includes(b.status)));
       setVehicles(veh);
     } catch(err){ console.error(err); }
-    finally { setLoading(false); }
+    finally { if (!silent) setLoading(false); }
   }, [isVehicleOwner]);
 
-  useEffect(()=>{ loadAll(); },[loadAll]);
+  useEffect(()=>{ 
+    loadAll(); 
+    const intervalId = setInterval(() => {
+      loadAll(true);
+    }, 5000);
+    return () => clearInterval(intervalId);
+  },[loadAll]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const myPlates = new Set(vehicles.filter(v => v.owner === displayName).map(v => (v.plate || '').toUpperCase()));
@@ -371,14 +403,16 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
                           <button className="btn btn-outline btn-xs" title="Generate PDF" onClick={()=>generateInvoice(inv)}>📄</button>
                           {!isVehicleOwner && (
                             <>
-                              <button className="btn btn-outline btn-xs" onClick={()=>openEdit(inv)}>✏️</button>
+                              {inv.status !== 'Paid' && (
+                                <button className="btn btn-outline btn-xs" onClick={()=>openEdit(inv)}>✏️</button>
+                              )}
                               <button className="btn btn-danger btn-xs" onClick={()=>del(inv.id)}>🗑</button>
                             </>
                           )}
                           {isVehicleOwner && ['Pending', 'Partial', 'Overdue'].includes(inv.status) && (
                             <button className="btn btn-green btn-xs" onClick={()=> {
                               setPayModal(inv);
-                              setPayForm({ amount: Number(inv.total||0)-Number(inv.paid||0), method: 'Card', slipBase64: '' });
+                              setPayForm({ amount: Number(inv.total||0)-Number(inv.paid||0), method: 'Card', slipBase64: '', cardNumber: '', cardExpiry: '', cardCvv: '', cardName: '' });
                             }}>💳 Pay</button>
                           )}
                         </div>
@@ -485,7 +519,16 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
                 </div>
                 <div className="field"><label>Service</label><input name="service" value={form.service} onChange={h} placeholder="Service performed"/></div>
                 <div className="form-row">
-                  <div className="field"><label>Invoice Date *</label><input name="date" type="date" value={form.date} onChange={h}/></div>
+                  <div className="field">
+                    <label>Invoice Date *</label>
+                    <input 
+                      name="date" 
+                      type="date" 
+                      value={form.date} 
+                      onChange={h} 
+                      min={new Date().toISOString().slice(0,10)} 
+                    />
+                  </div>
                   <div className="field"><label>Due Date</label><input name="dueDate" type="date" value={form.dueDate} onChange={h}/></div>
                 </div>
                 <div className="form-row">
@@ -604,6 +647,61 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
               </select>
             </div>
 
+            {payForm.method === 'Card' && (
+              <div style={{ padding: '15px', background: 'var(--surface)', borderRadius: '8px', marginBottom: '15px', border: '1px solid var(--border)' }}>
+                <div className="field" style={{ marginBottom: 12 }}>
+                  <label>Card Number <span style={{color:'var(--red)'}}>*</span></label>
+                  <input 
+                    placeholder="XXXX XXXX XXXX" 
+                    value={payForm.cardNumber}
+                    onChange={e => {
+                      let val = e.target.value.replace(/[^0-9]/g, '');
+                      if (val.length > 12) val = val.substring(0, 12);
+                      const parts = [];
+                      for (let i = 0; i < val.length; i += 4) parts.push(val.substring(i, i + 4));
+                      setPayForm(f => ({ ...f, cardNumber: parts.join(' ') }));
+                    }}
+                  />
+                </div>
+                <div className="form-row" style={{ marginBottom: 12 }}>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label>Valid Date (MM/YY) <span style={{color:'var(--red)'}}>*</span></label>
+                    <input 
+                      placeholder="MM/YY" 
+                      value={payForm.cardExpiry}
+                      onChange={e => {
+                        let val = e.target.value.replace(/[^0-9/]/g, '');
+                        if (val.length === 2 && !val.includes('/') && e.target.value.length > payForm.cardExpiry.length) val += '/';
+                        if (val.length > 5) val = val.substring(0, 5);
+                        setPayForm(f => ({ ...f, cardExpiry: val }));
+                      }}
+                    />
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label>CVV <span style={{color:'var(--red)'}}>*</span></label>
+                    <input 
+                      type="password"
+                      placeholder="XXX" 
+                      value={payForm.cardCvv}
+                      onChange={e => {
+                        let val = e.target.value.replace(/[^0-9]/g, '');
+                        if (val.length > 3) val = val.substring(0, 3);
+                        setPayForm(f => ({ ...f, cardCvv: val }));
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>Card Holder Name <span style={{color:'var(--red)'}}>*</span></label>
+                  <input 
+                    placeholder="e.g. John Doe" 
+                    value={payForm.cardName}
+                    onChange={e => setPayForm(f => ({ ...f, cardName: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
+
             {payForm.method === 'Bank Deposit' && (
               <div className="field">
                 <label>Upload Payment Slip <span style={{color:'var(--text3)'}}>(Required)</span></label>
@@ -629,12 +727,24 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
                 const maxAmt = Number(payModal.total || 0) - Number(payModal.paid || 0);
                 if (amt <= 0) return setErrorMsg('Please enter a valid payment amount.');
                 if (amt > maxAmt) return setErrorMsg(`Amount cannot exceed the balance due of LKR ${maxAmt.toLocaleString()}`);
+                
+                if (payForm.method === 'Card') {
+                  if (payForm.cardNumber.replace(/\s/g, '').length !== 12) return setErrorMsg('Card number must be exactly 12 digits.');
+                  if (!checkExpiry(payForm.cardExpiry)) return setErrorMsg('Please enter a valid future expiry date (MM/YY).');
+                  if (payForm.cardCvv.length !== 3) return setErrorMsg('CVV must be exactly 3 digits.');
+                  if (!payForm.cardName.trim()) return setErrorMsg('Card holder name is required.');
+                }
+                
                 if (payForm.method === 'Bank Deposit' && !payForm.slipBase64) return setErrorMsg('Please upload the payment slip image.');
                 
                 const newPaid = Number(payModal.paid || 0) + amt;
                 const total = Number(payModal.total || 0);
                 let newStatus = 'Partial';
-                if (newPaid >= total) newStatus = 'Paid';
+                let msg = 'Partial payment submitted successfully! Thank you.';
+                if (newPaid >= total) {
+                  newStatus = 'Paid';
+                  msg = 'Payment submitted successfully! Invoice is now fully paid.';
+                }
                 
                 try {
                   await invoiceService.update(payModal.id, {
@@ -646,7 +756,7 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
                   });
                   setPayModal(null);
                   loadAll();
-                  setSuccessMsg('Payment submitted successfully! Thank you.');
+                  setSuccessMsg(msg);
                 } catch(err) { setErrorMsg(err.message); }
               }}>Confirm Payment</button>
             </div>
@@ -661,10 +771,14 @@ tbody td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid #f0f0f0}
             <div style={{ fontSize: '3.5rem', marginBottom: '15px' }}>✅</div>
             <h3 style={{ marginBottom: '10px', fontSize: '1.4rem' }}>Success!</h3>
             <p style={{ color: 'var(--text2)', marginBottom: '25px', lineHeight: '1.5' }}>{successMsg}</p>
-            <button className="btn btn-accent" style={{ width: '100%', padding: '12px' }} onClick={() => setSuccessMsg("")}>Okay</button>
+            <button className="btn btn-accent" style={{ width: '100%', padding: '12px' }} onClick={() => {
+              setSuccessMsg("");
+            }}>Okay</button>
           </div>
         </div>
       )}
+
+
 
       {/* ── Error Message Modal ── */}
       {errorMsg && (

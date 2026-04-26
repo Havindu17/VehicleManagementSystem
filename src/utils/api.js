@@ -8,9 +8,16 @@ async function request(method, path, body = null) {
   const headers = { 'Content-Type': 'application/json' };
   const token = getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const options = { method, headers };
+  const options = { method, headers, cache: 'no-store' };
   if (body) options.body = JSON.stringify(body);
-  const res = await fetch(`${BASE_URL}${path}`, options);
+  
+  let fetchUrl = `${BASE_URL}${path}`;
+  if (method === 'GET') {
+    const separator = fetchUrl.includes('?') ? '&' : '?';
+    fetchUrl += `${separator}_t=${Date.now()}`;
+  }
+  
+  const res = await fetch(fetchUrl, options);
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) throw new Error(data?.error || `Request failed: ${res.status}`);
