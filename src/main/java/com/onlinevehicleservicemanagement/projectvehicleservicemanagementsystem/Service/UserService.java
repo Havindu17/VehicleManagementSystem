@@ -3,129 +3,161 @@ package com.onlinevehicleservicemanagement.projectvehicleservicemanagementsystem
 import com.onlinevehicleservicemanagement.projectvehicleservicemanagementsystem.Model.User;
 import com.onlinevehicleservicemanagement.projectvehicleservicemanagementsystem.Repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.*;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 @Service
-public class UserService {
+public class UserService implements UserDetailsService {
 
     @Autowired
-    private UserRepository repository;
+    private UserRepository userRepository;
 
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
-    // ── Register ──────────────────────────────────
-    public User register(User user) {
-        if (repository.existsByUsername(user.getUsername())) {
-            throw new RuntimeException("Username already taken");
-        }
-        if (repository.existsByEmail(user.getEmail())) {
-            throw new RuntimeException("Email already registered");
-        }
-        // Password hash කරලා save කරන්න
-        user.setPassword(encoder.encode(user.getPassword()));
-        return repository.save(user);
+    // ── Spring Security ────────────────────────────────────────
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+
+        return new org.springframework.security.core.userdetails.User(
+                user.getUsername(),
+                user.getPassword(),
+                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole()))
+        );
     }
 
-    // ── Login ─────────────────────────────────────
+    // ── REGISTER ───────────────────────────────────────────────
+    public User register(User user) {
+        if (userRepository.existsByUsername(user.getUsername())) {
+            throw new RuntimeException("Username already exists!");
+        }
+        if (userRepository.existsByEmail(user.getEmail())) {
+            throw new RuntimeException("Email already exists!");
+        }
+
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        user.setJoinedAt(LocalDateTime.now());
+
+        if (user.getStatus() == null) {
+            if ("Garage Owner".equals(user.getRole())) {
+                user.setStatus("Pending");
+            } else {
+                user.setStatus("Active");
+            }
+        }
+
+        return userRepository.save(user);
+    }
+
     public User login(String username, String password) {
-        User user = repository.findByUsername(username)
+        User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("Invalid username or password"));
 
-        if (!encoder.matches(password, user.getPassword())) {
+        if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new RuntimeException("Invalid username or password");
         }
+
+        // ✅ null status — block කරන්නේ නෑ (Admin137 වගේ cases)
+        String status = user.getStatus();
+        if ("Pending".equals(status)) {
+            throw new RuntimeException("Account pending approval. Please contact admin.");
+        }
+        if ("Blocked".equals(status)) {
+            throw new RuntimeException("Account blocked. Please contact admin.");
+        }
+
         return user;
     }
 
-    // ── Forgot Password ───────────────────────────
+    // ── FORGOT PASSWORD ─────────────────────────────────────────
     public String forgotPassword(String email) {
-        User user = repository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Email not found"));
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("No account found with this email"));
 
-
-        String token = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String token = UUID.randomUUID().toString();
         user.setResetToken(token);
-        repository.save(user);
-
-
+        userRepository.save(user);
         return token;
     }
 
-    // ── Reset Password ────────────────────────────
+    // ── RESET PASSWORD ──────────────────────────────────────────
     public void resetPassword(String token, String newPassword) {
-        User user = repository.findByResetToken(token)
-                .orElseThrow(() -> new RuntimeException("Invalid or expired token"));
+        User user = userRepository.findByResetToken(token)
+                .orElseThrow(() -> new RuntimeException("Invalid or expired reset token"));
 
-        user.setPassword(encoder.encode(newPassword));
+        user.setPassword(passwordEncoder.encode(newPassword));
         user.setResetToken(null);
-        repository.save(user);
+        userRepository.save(user);
     }
 
-    // ── Get All Users ─────────────────────────────
+    // ── GET ALL ─────────────────────────────────────────────────
     public List<User> getAll() {
-        return repository.findAll();
+        return userRepository.findAll();
     }
 
-    // ── Get By ID ─────────────────────────────────
+    // ── GET BY ID ───────────────────────────────────────────────
     public User getById(Long id) {
-        return repository.findById(id)
+        return userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found: " + id));
+    }
+
+    // ── FIND BY USERNAME ────────────────────────────────────────
+    public User findByUsername(String username) {
+        return userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
     }
 
-    // ── Update User ───────────────────────────────
+    // ── UPDATE STATUS ✅ (Admin approve / block) ─────────────────
+    // Valid values: "Active", "Pending", "Blocked"
+    public void updateStatus(Long id, String newStatus) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found: " + id));
+
+        if ("Admin".equals(user.getRole())) {
+            throw new RuntimeException("Cannot change Admin status");
+        }
+
+        user.setStatus(newStatus);
+        userRepository.save(user);
+    }
+
+    // ── UPDATE ──────────────────────────────────────────────────
     public User update(Long id, User updated) {
-        User existing = getById(id);
-        existing.setFullName(updated.getFullName());
-        existing.setEmail(updated.getEmail());
-        existing.setPhone(updated.getPhone());
-        existing.setNic(updated.getNic());
-        existing.setRole(updated.getRole());
-        existing.setAddress(updated.getAddress());
-        existing.setDrivingLicense(updated.getDrivingLicense());
-        existing.setBusinessName(updated.getBusinessName());
-        existing.setBusinessReg(updated.getBusinessReg());
-        existing.setGarageAddress(updated.getGarageAddress());
-        existing.setOpenHours(updated.getOpenHours());
-        existing.setGaragePhone(updated.getGaragePhone());
-        return repository.save(existing);
+        User user = getById(id);
+
+        user.setFullName(updated.getFullName());
+        user.setEmail(updated.getEmail());
+        user.setPhone(updated.getPhone());
+        user.setAddress(updated.getAddress());
+        user.setNic(updated.getNic());
+        user.setDrivingLicense(updated.getDrivingLicense());
+        user.setBusinessName(updated.getBusinessName());
+        user.setBusinessReg(updated.getBusinessReg());
+        user.setGarageAddress(updated.getGarageAddress());
+        user.setGaragePhone(updated.getGaragePhone());
+        user.setOpenHours(updated.getOpenHours());
+
+        if (updated.getStatus() != null) {
+            user.setStatus(updated.getStatus());
+        }
+
+        if (updated.getPassword() != null && !updated.getPassword().isBlank()) {
+            user.setPassword(passwordEncoder.encode(updated.getPassword()));
+        }
+
+        return userRepository.save(user);
     }
 
-    // ── Delete User ───────────────────────────────
+    // ── DELETE ───────────────────────────────────────────────────
     public void delete(Long id) {
-        repository.deleteById(id);
-    }
-
-    // ── Seed Demo Users ───────────────────────────
-    public void seedDemoUsers() {
-        if (repository.count() > 0) return;
-
-        User admin = new User();
-        admin.setUsername("admin");
-        admin.setPassword(encoder.encode("admin123"));
-        admin.setEmail("admin@autoserve.lk");
-        admin.setFullName("System Admin");
-        admin.setRole("Admin");
-        repository.save(admin);
-
-        User garage = new User();
-        garage.setUsername("garage1");
-        garage.setPassword(encoder.encode("garage123"));
-        garage.setEmail("garage1@autoserve.lk");
-        garage.setFullName("Amal Perera");
-        garage.setRole("Garage Owner");
-        garage.setBusinessName("ABC Auto Garage");
-        repository.save(garage);
-
-        User owner = new User();
-        owner.setUsername("owner1");
-        owner.setPassword(encoder.encode("owner123"));
-        owner.setEmail("owner1@autoserve.lk");
-        owner.setFullName("Nimal Silva");
-        owner.setRole("Vehicle Owner");
-        repository.save(owner);
+        userRepository.deleteById(id);
     }
 }

@@ -11,6 +11,8 @@ public class FeedBack {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private Long garageId;  // ← ADD
+
     private String feedbackCode;
     private String customer;
     private String garage;
@@ -20,9 +22,12 @@ public class FeedBack {
     private LocalDate date;
     private String status;
 
-    // Getters & Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public Long getGarageId() { return garageId; }          // ← ADD
+    public void setGarageId(Long garageId) { this.garageId = garageId; }  // ← ADD
+
     public String getFeedbackCode() { return feedbackCode; }
     public void setFeedbackCode(String feedbackCode) { this.feedbackCode = feedbackCode; }
     public String getCustomer() { return customer; }

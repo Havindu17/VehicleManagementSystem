@@ -13,7 +13,18 @@ public class FeedBackService {
     @Autowired
     private FeedbackRepository repository;
 
-    public List<FeedBack> getAll() { return repository.findAll(); }
+    public List<FeedBack> getAll() {
+        return repository.findAll();
+    }
+
+    public List<FeedBack> getByGarageId(Long garageId) {
+        return repository.findByGarageId(garageId);
+    }
+
+    public FeedBack getById(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Feedback not found: " + id));
+    }
 
     public FeedBack save(FeedBack f) {
         if (f.getDate() == null) f.setDate(LocalDate.now());
@@ -24,11 +35,12 @@ public class FeedBackService {
     }
 
     public FeedBack updateStatus(Long id, String status) {
-        FeedBack existing = repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Not found: " + id));
+        FeedBack existing = getById(id);
         existing.setStatus(status);
         return repository.save(existing);
     }
 
-    public void delete(Long id) { repository.deleteById(id); }
+    public void delete(Long id) {
+        repository.deleteById(id);
+    }
 }

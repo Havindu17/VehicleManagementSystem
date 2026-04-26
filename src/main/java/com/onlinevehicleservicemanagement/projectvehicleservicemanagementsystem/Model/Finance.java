@@ -12,6 +12,8 @@ public class Finance {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private Long garageId;  // ← ADD
+
     private String invoiceCode;
     private String bookingId;
     private String customer;
@@ -28,9 +30,12 @@ public class Finance {
     private String status;
     private String notes;
 
-    // Getters & Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public Long getGarageId() { return garageId; }          // ← ADD
+    public void setGarageId(Long garageId) { this.garageId = garageId; }  // ← ADD
+
     public String getInvoiceCode() { return invoiceCode; }
     public void setInvoiceCode(String invoiceCode) { this.invoiceCode = invoiceCode; }
     public String getBookingId() { return bookingId; }

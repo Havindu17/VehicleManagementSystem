@@ -13,6 +13,8 @@ public class Booking {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private Long garageId;  // ← ADD කළා
+
     private String bookingCode;
     private String customer;
     private String customerPhone;
@@ -30,6 +32,10 @@ public class Booking {
     // Getters & Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public Long getGarageId() { return garageId; }       // ← ADD
+    public void setGarageId(Long garageId) { this.garageId = garageId; }  // ← ADD
+
     public String getBookingCode() { return bookingCode; }
     public void setBookingCode(String bookingCode) { this.bookingCode = bookingCode; }
     public String getCustomer() { return customer; }

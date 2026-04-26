@@ -13,6 +13,8 @@ public class Vehicle {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private Long garageId;  // ← ADD
+
     private String vehicleCode;
     private String plate;
     private String owner;
@@ -31,14 +33,16 @@ public class Vehicle {
     private String status;
 
     @ElementCollection
-    @CollectionTable(name = "vehicle_history",
-            joinColumns = @JoinColumn(name = "vehicle_id"))
+    @CollectionTable(name = "vehicle_history", joinColumns = @JoinColumn(name = "vehicle_id"))
     @Column(name = "history_entry")
     private List<String> history = new ArrayList<>();
 
-    // Getters & Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public Long getGarageId() { return garageId; }          // ← ADD
+    public void setGarageId(Long garageId) { this.garageId = garageId; }  // ← ADD
+
     public String getVehicleCode() { return vehicleCode; }
     public void setVehicleCode(String vehicleCode) { this.vehicleCode = vehicleCode; }
     public String getPlate() { return plate; }

@@ -12,7 +12,18 @@ public class BookingService {
     @Autowired
     private BookingRepository repository;
 
-    public List<Booking> getAll() { return repository.findAll(); }
+    public List<Booking> getAll() {
+        return repository.findAll();
+    }
+
+    public List<Booking> getByGarageId(Long garageId) {
+        return repository.findByGarageId(garageId);
+    }
+
+    public Booking getById(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Booking not found: " + id));
+    }
 
     public Booking save(Booking b) {
         Booking saved = repository.save(b);
@@ -21,8 +32,7 @@ public class BookingService {
     }
 
     public Booking update(Long id, Booking updated) {
-        Booking booking = repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Not found: " + id));
+        Booking booking = getById(id);
         booking.setCustomer(updated.getCustomer());
         booking.setCustomerPhone(updated.getCustomerPhone());
         booking.setVehicle(updated.getVehicle());
@@ -39,11 +49,12 @@ public class BookingService {
     }
 
     public Booking updateStatus(Long id, String status) {
-        Booking existing = repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Not found: " + id));
+        Booking existing = getById(id);
         existing.setStatus(status);
         return repository.save(existing);
     }
 
-    public void delete(Long id) { repository.deleteById(id); }
+    public void delete(Long id) {
+        repository.deleteById(id);
+    }
 }

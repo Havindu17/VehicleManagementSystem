@@ -12,7 +12,18 @@ public class ServiceEntityService {
     @Autowired
     private ServiceRepository repository;
 
-    public List<ServiceEntity> getAll() { return repository.findAll(); }
+    public List<ServiceEntity> getAll() {
+        return repository.findAll();
+    }
+
+    public List<ServiceEntity> getByGarageId(Long garageId) {
+        return repository.findByGarageId(garageId);
+    }
+
+    public ServiceEntity getById(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Service not found: " + id));
+    }
 
     public ServiceEntity save(ServiceEntity s) {
         ServiceEntity saved = repository.save(s);
@@ -21,23 +32,28 @@ public class ServiceEntityService {
     }
 
     public ServiceEntity update(Long id, ServiceEntity updated) {
-        ServiceEntity serviceEntity = repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Not found: " + id));
-        serviceEntity.setName(updated.getName());
-        serviceEntity.setCategory(updated.getCategory());
-        serviceEntity.setDescription(updated.getDescription());
-        serviceEntity.setPrice(updated.getPrice());
-        serviceEntity.setVehicleType(updated.getVehicleType());
-        serviceEntity.setVehicle(updated.getVehicle());
-        serviceEntity.setDuration(updated.getDuration());
-        serviceEntity.setWarranty(updated.getWarranty());
-        serviceEntity.setCount(updated.getCount());
-        serviceEntity.setPriority(updated.getPriority());
-        serviceEntity.setStatus(updated.getStatus());
-        serviceEntity.setAssignedDate(updated.getAssignedDate());
-        serviceEntity.setTechNotes(updated.getTechNotes());
-        return repository.save(serviceEntity);
+        ServiceEntity existing = getById(id);
+        existing.setName(updated.getName());
+        existing.setCategory(updated.getCategory());
+        existing.setDescription(updated.getDescription());
+        existing.setPrice(updated.getPrice());
+        existing.setVehicleType(updated.getVehicleType());
+        existing.setVehicle(updated.getVehicle());
+        existing.setDuration(updated.getDuration());
+        existing.setWarranty(updated.getWarranty());
+        existing.setCount(updated.getCount());
+        existing.setPriority(updated.getPriority());
+        existing.setStatus(updated.getStatus());
+        existing.setAssignedDate(updated.getAssignedDate());
+        existing.setTechNotes(updated.getTechNotes());
+        existing.setSelectedBrand(updated.getSelectedBrand());
+        existing.setSelectedSize(updated.getSelectedSize());
+        existing.setAssignedVehicles(updated.getAssignedVehicles());
+        existing.setNames(updated.getNames());
+        return repository.save(existing);
     }
 
-    public void delete(Long id) { repository.deleteById(id); }
+    public void delete(Long id) {
+        repository.deleteById(id);
+    }
 }

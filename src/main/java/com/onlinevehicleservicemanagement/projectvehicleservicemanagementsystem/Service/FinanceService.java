@@ -13,7 +13,18 @@ public class FinanceService {
     @Autowired
     private FinanceRepository repository;
 
-    public List<Finance> getAll() { return repository.findAll(); }
+    public List<Finance> getAll() {
+        return repository.findAll();
+    }
+
+    public List<Finance> getByGarageId(Long garageId) {
+        return repository.findByGarageId(garageId);
+    }
+
+    public Finance getById(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Invoice not found: " + id));
+    }
 
     public Finance save(Finance inv) {
         if (inv.getSubtotal() != null) {
@@ -27,32 +38,32 @@ public class FinanceService {
     }
 
     public Finance update(Long id, Finance updated) {
-        Finance Finance = repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Not found: " + id));
-        Finance.setCustomer(updated.getCustomer());
-        Finance.setVehicle(updated.getVehicle());
-        Finance.setService(updated.getService());
-        Finance.setParts(updated.getParts());
-        Finance.setDate(updated.getDate());
-        Finance.setDueDate(updated.getDueDate());
-        Finance.setSubtotal(updated.getSubtotal());
-        Finance.setTax(updated.getTax());
-        Finance.setTotal(updated.getTotal());
-        Finance.setPaid(updated.getPaid());
-        Finance.setPayMethod(updated.getPayMethod());
-        Finance.setStatus(updated.getStatus());
-        Finance.setNotes(updated.getNotes());
-        return repository.save(Finance);
+        Finance finance = getById(id);
+        finance.setCustomer(updated.getCustomer());
+        finance.setVehicle(updated.getVehicle());
+        finance.setService(updated.getService());
+        finance.setParts(updated.getParts());
+        finance.setDate(updated.getDate());
+        finance.setDueDate(updated.getDueDate());
+        finance.setSubtotal(updated.getSubtotal());
+        finance.setTax(updated.getTax());
+        finance.setTotal(updated.getTotal());
+        finance.setPaid(updated.getPaid());
+        finance.setPayMethod(updated.getPayMethod());
+        finance.setStatus(updated.getStatus());
+        finance.setNotes(updated.getNotes());
+        return repository.save(finance);
     }
 
     public Finance markPaid(Long id, String payMethod) {
-        Finance finance = repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Not found: " + id));
+        Finance finance = getById(id);
         finance.setPaid(finance.getTotal());
         finance.setPayMethod(payMethod);
         finance.setStatus("Paid");
         return repository.save(finance);
     }
 
-    public void delete(Long id) { repository.deleteById(id); }
+    public void delete(Long id) {
+        repository.deleteById(id);
+    }
 }

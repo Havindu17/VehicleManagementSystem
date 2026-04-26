@@ -3,6 +3,8 @@ package com.onlinevehicleservicemanagement.projectvehicleservicemanagementsystem
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "services")
@@ -11,6 +13,8 @@ public class ServiceEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    private Long garageId;  // ← ADD
 
     private String serviceCode;
     private String name;
@@ -26,10 +30,25 @@ public class ServiceEntity {
     private String status;
     private LocalDate assignedDate;
     private String techNotes;
+    private String selectedBrand;
+    private String selectedSize;
 
-    // Getters & Setters
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "service_assigned_vehicles", joinColumns = @JoinColumn(name = "service_id"))
+    @Column(name = "plate")
+    private List<String> assignedVehicles = new ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "service_names", joinColumns = @JoinColumn(name = "service_id"))
+    @Column(name = "service_name")
+    private List<String> names = new ArrayList<>();
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public Long getGarageId() { return garageId; }          // ← ADD
+    public void setGarageId(Long garageId) { this.garageId = garageId; }  // ← ADD
+
     public String getServiceCode() { return serviceCode; }
     public void setServiceCode(String serviceCode) { this.serviceCode = serviceCode; }
     public String getName() { return name; }
@@ -58,4 +77,12 @@ public class ServiceEntity {
     public void setAssignedDate(LocalDate assignedDate) { this.assignedDate = assignedDate; }
     public String getTechNotes() { return techNotes; }
     public void setTechNotes(String techNotes) { this.techNotes = techNotes; }
+    public String getSelectedBrand() { return selectedBrand; }
+    public void setSelectedBrand(String selectedBrand) { this.selectedBrand = selectedBrand; }
+    public String getSelectedSize() { return selectedSize; }
+    public void setSelectedSize(String selectedSize) { this.selectedSize = selectedSize; }
+    public List<String> getAssignedVehicles() { return assignedVehicles; }
+    public void setAssignedVehicles(List<String> assignedVehicles) { this.assignedVehicles = assignedVehicles != null ? assignedVehicles : new ArrayList<>(); }
+    public List<String> getNames() { return names; }
+    public void setNames(List<String> names) { this.names = names != null ? names : new ArrayList<>(); }
 }
